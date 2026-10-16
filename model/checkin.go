@@ -1,8 +1,7 @@
 package model
 
 import (
-	"math/rand"
-	"time"
+	"errors"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -39,11 +38,15 @@ func GetUserCheckinRecords(userId int, startDate, endDate string) ([]Checkin, er
 }
 
 // HasCheckedInToday 检查用户今天是否已签到
+// wind-tide: "today" is the Beijing (UTC+8) check-in day of WtNow.
 func HasCheckedInToday(userId int) (bool, error) {
-	today := time.Now().Format("2006-01-02")
+	return hasCheckedInOn(userId, WtCheckinDay(WtNow()))
+}
+
+func hasCheckedInOn(userId int, day string) (bool, error) {
 	var count int64
 	err := DB.Model(&Checkin{}).
-		Where("user_id = ? AND checkin_date = ?", userId, today).
+		Where("user_id = ? AND checkin_date = ?", userId, day).
 		Count(&count).Error
 	return count > 0, err
 }
@@ -51,14 +54,18 @@ func HasCheckedInToday(userId int) (bool, error) {
 // UserCheckin 执行用户签到
 // MySQL 和 PostgreSQL 使用事务保证原子性
 // SQLite 不支持嵌套事务，使用顺序操作 + 手动回滚
+// wind-tide: the check-in day is the Beijing day of WtNow and the reward is
+// the fixed WtCheckinReward instead of a random amount.
 func UserCheckin(userId int) (*Checkin, error) {
+	now := WtNow()
 	setting := operation_setting.GetCheckinSetting()
 	if !setting.Enabled {
 		return nil, common.NewMessage("Check-in feature is not enabled")
 	}
 
 	// 检查今天是否已签到
-	hasChecked, err := HasCheckedInToday(userId)
+	today := WtCheckinDay(now)
+	hasChecked, err := hasCheckedInOn(userId, today)
 	if err != nil {
 		return nil, err
 	}
@@ -66,18 +73,12 @@ func UserCheckin(userId int) (*Checkin, error) {
 		return nil, common.NewMessage("Already checked in today")
 	}
 
-	// 计算随机额度奖励
-	quotaAwarded := setting.MinQuota
-	if setting.MaxQuota > setting.MinQuota {
-		quotaAwarded = setting.MinQuota + rand.Intn(setting.MaxQuota-setting.MinQuota+1)
-	}
-
-	today := time.Now().Format("2006-01-02")
+	quotaAwarded := WtCheckinReward()
 	checkin := &Checkin{
 		UserId:       userId,
 		CheckinDate:  today,
 		QuotaAwarded: quotaAwarded,
-		CreatedAt:    time.Now().Unix(),
+		CreatedAt:    now.Unix(),
 	}
 
 	// 根据数据库类型选择不同的策略
@@ -100,8 +101,11 @@ func userCheckinWithTransaction(checkin *Checkin, userId int, quotaAwarded int) 
 		}
 
 		// 步骤2: 在事务中增加用户额度
-		if err := tx.Model(&User{}).Where("id = ?", userId).
-			Update("quota", gorm.Expr("quota + ?", quotaAwarded)).Error; err != nil {
+		// wind-tide: credit through the capped wallet helper.
+		if err := increaseUserQuotaWithTx(tx, userId, quotaAwarded); err != nil {
+			if errors.Is(err, ErrWalletQuotaLimitExceeded) {
+				return err
+			}
 			return common.NewMessage("Check-in failed: quota update error")
 		}
 
@@ -133,6 +137,10 @@ func userCheckinWithoutTransaction(checkin *Checkin, userId int, quotaAwarded in
 	if err := IncreaseUserQuota(userId, quotaAwarded, true); err != nil {
 		// 如果增加额度失败，需要回滚签到记录
 		DB.Delete(checkin)
+		// wind-tide: report the wallet cap instead of a generic failure.
+		if errors.Is(err, ErrWalletQuotaLimitExceeded) {
+			return nil, err
+		}
 		return nil, common.NewMessage("Check-in failed: quota update error")
 	}
 

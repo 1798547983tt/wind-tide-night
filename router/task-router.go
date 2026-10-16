@@ -15,7 +15,9 @@ func SetTaskRouter(router *gin.Engine) {
 	taskSubmitRouter := router.Group("/v1/tasks")
 	taskSubmitRouter.Use(middleware.RouteTag("relay"), middleware.TokenAuth())
 	{
-		taskSubmitRouter.POST("/:key", middleware.PrepareTaskPluginSubmit(), middleware.Distribute(), controller.RelayTask)
+		// wind-tide: task submissions count against the model rate limit
+		// (wind-tide/API.md §10).
+		taskSubmitRouter.POST("/:key", middleware.ModelRequestRateLimit(), middleware.PrepareTaskPluginSubmit(), middleware.Distribute(), controller.RelayTask)
 	}
 
 	taskReadRouter := router.Group("/v1/tasks")

@@ -64,7 +64,9 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundRouter := router.Group("/pg")
 	playgroundRouter.Use(middleware.RouteTag("relay"))
 	playgroundRouter.Use(middleware.SystemPerformanceCheck())
-	playgroundRouter.Use(middleware.UserAuth(), middleware.Distribute())
+	// wind-tide: playground calls count against the model rate limit
+	// (wind-tide/API.md §10).
+	playgroundRouter.Use(middleware.UserAuth(), middleware.ModelRequestRateLimit(), middleware.Distribute())
 	{
 		playgroundRouter.POST("/chat/completions", controller.Playground)
 	}
@@ -208,23 +210,27 @@ func SetRelayRouter(router *gin.Engine) {
 
 func registerMjRouterGroup(relayMjRouter *gin.RouterGroup) {
 	relayMjRouter.GET("/image/:id", relay.RelayMidjourneyImage)
-	relayMjRouter.Use(middleware.TokenAuth(), middleware.Distribute())
+	relayMjRouter.Use(middleware.TokenAuth())
+	// wind-tide: submissions count against the model rate limit, task reads
+	// do not (wind-tide/API.md §10).
+	relayMjSubmitRouter := relayMjRouter.Group("", middleware.ModelRequestRateLimit(), middleware.Distribute())
+	relayMjRouter.Use(middleware.Distribute())
 	{
-		relayMjRouter.POST("/submit/action", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/shorten", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/modal", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/imagine", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/change", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/simple-change", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/describe", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/blend", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/edits", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/video", controller.RelayMidjourney)
+		relayMjSubmitRouter.POST("/submit/action", controller.RelayMidjourney)
+		relayMjSubmitRouter.POST("/submit/shorten", controller.RelayMidjourney)
+		relayMjSubmitRouter.POST("/submit/modal", controller.RelayMidjourney)
+		relayMjSubmitRouter.POST("/submit/imagine", controller.RelayMidjourney)
+		relayMjSubmitRouter.POST("/submit/change", controller.RelayMidjourney)
+		relayMjSubmitRouter.POST("/submit/simple-change", controller.RelayMidjourney)
+		relayMjSubmitRouter.POST("/submit/describe", controller.RelayMidjourney)
+		relayMjSubmitRouter.POST("/submit/blend", controller.RelayMidjourney)
+		relayMjSubmitRouter.POST("/submit/edits", controller.RelayMidjourney)
+		relayMjSubmitRouter.POST("/submit/video", controller.RelayMidjourney)
 		//relayMjRouter.POST("/notify", controller.RelayMidjourney)
 		relayMjRouter.GET("/task/:id/fetch", controller.RelayMidjourney)
 		relayMjRouter.GET("/task/:id/image-seed", controller.RelayMidjourney)
 		relayMjRouter.POST("/task/list-by-condition", controller.RelayMidjourney)
-		relayMjRouter.POST("/insight-face/swap", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/upload-discord-images", controller.RelayMidjourney)
+		relayMjSubmitRouter.POST("/insight-face/swap", controller.RelayMidjourney)
+		relayMjSubmitRouter.POST("/submit/upload-discord-images", controller.RelayMidjourney)
 	}
 }

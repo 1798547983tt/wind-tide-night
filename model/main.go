@@ -380,6 +380,10 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	// wind-tide: Discord gate, allowlist and emergency login tables.
+	if err := DB.AutoMigrate(wtModels...); err != nil {
+		return err
+	}
 	if err := InitializeUserAuthVersions(); err != nil {
 		return err
 	}

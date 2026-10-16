@@ -73,6 +73,21 @@ var auditContentTemplates = map[string]string{
 	"subscription.plan_reset":       "Reset active subscriptions for plan ${plan_id}",
 	"subscription.user_plan_reset":  "Reset active plan ${plan_id} subscriptions for user ${target_user_id}",
 	"subscription.user_quota_reset": "Administrator reset the quota of subscription plan ${plan_title} (ID: ${plan_id})",
+
+	// wind-tide: allowlist, entry requests, emergency login, the takeover of a
+	// database and the owner's rebind.
+	"wt.allowlist_add":          "Added allowlist entry ${id}",
+	"wt.allowlist_update":       "Updated the note of allowlist entry ${id}",
+	"wt.allowlist_remove":       "Removed allowlist entry ${id}",
+	"wt.allowlist_restore":      "Restored allowlist entry ${id}",
+	"wt.allowlist_pin":          "Locked allowlist entry ${id} to Discord account ${discord_id}",
+	"wt.entry_approve":          "Approved entry request ${id}",
+	"wt.entry_reject":           "Rejected entry request ${id}",
+	"wt.emergency_login":        "Emergency login used",
+	"wt.emergency_link_issued":  "Emergency login link issued",
+	"wt.emergency_login_failed": "Emergency login attempt failed",
+	"wt.takeover":               "Disabled ${accounts} accounts outside the allowlist when wind-tide took over the database",
+	"wt.owner_rebound":          "Bound the root account to a new owner Discord account and revoked its credentials",
 }
 
 func recordPasskeyDomainAudit(c *gin.Context, change *model.PasskeyDomainChange, confirmed bool, err error) {

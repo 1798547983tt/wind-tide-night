@@ -4,6 +4,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -70,6 +72,11 @@ var accessTokenExemptRoutes = []string{
 	// API key authentication (TokenAuthReadOnly).
 	"GET /api/usage/token/",
 	"GET /api/log/token",
+
+	// wind-tide: anonymous home page numbers, avatars and emergency login.
+	"GET /api/wt/public-stats",
+	"GET /api/wt/avatar/:discord_id",
+	"POST /api/wt/emergency-login",
 }
 
 // accessTokenHelperRoutes are declared through handlePermissionRoute outside
@@ -199,4 +206,48 @@ func TestAccessTokenVerificationScopesAreAllListed(t *testing.T) {
 		_, listed := service.AccessTokenVerificationScope(scope)
 		assert.True(t, listed, "verification scope %s has no access token rule", scope)
 	}
+}
+
+// wind-tide: the Discord-only guard runs on the real /api router, ahead of
+// authentication, and the routes it names are the ones registered there
+// (wind-tide/API.md §3). TestWtDiscordOnlyGuard covers each decision.
+func TestWtApiRouterRefusesNonDiscordEntryPoints(t *testing.T) {
+	engine := newAccessTokenScopeTestEngine(t)
+	serve := func(method, target, body string) *httptest.ResponseRecorder {
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, httptest.NewRequest(method, target, strings.NewReader(body)))
+		return recorder
+	}
+	for _, request := range []struct{ method, target, body string }{
+		{http.MethodDelete, "/api/user/7/bindings/discord", ""},
+		{http.MethodPost, "/api/setup", `{}`},
+		{http.MethodGet, "/api/verification?email=a@example.com", ""},
+		{http.MethodGet, "/api/reset_password?email=a@example.com", ""},
+		{http.MethodPost, "/api/user/reset", `{}`},
+		{http.MethodPost, "/api/user/register", `{}`},
+		{http.MethodPost, "/api/user/login", `{}`},
+		{http.MethodPost, "/api/user/passkey/login/begin", `{}`},
+		{http.MethodPost, "/api/user/passkey/login/finish", `{}`},
+		{http.MethodGet, "/api/oauth/wechat?code=x", ""},
+		{http.MethodPost, "/api/oauth/wechat/bind", `{}`},
+		{http.MethodGet, "/api/oauth/telegram/login", ""},
+		{http.MethodPost, "/api/oauth/telegram/bind/start", `{}`},
+		{http.MethodGet, "/api/oauth/telegram/bind/flow", ""},
+		{http.MethodGet, "/api/oauth/github?code=x&state=y", ""},
+		{http.MethodPost, "/api/oauth/state", `{"provider":"github","intent":"login"}`},
+		{http.MethodPost, "/api/oauth/state", `{"provider":"discord","intent":"bind"}`},
+	} {
+		name := request.method + " " + request.target + " " + request.body
+		recorder := serve(request.method, request.target, request.body)
+		assert.Equal(t, http.StatusForbidden, recorder.Code, name)
+		var response struct {
+			Message string `json:"message"`
+			Code    string `json:"code"`
+		}
+		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response), name)
+		assert.Equal(t, "WT_DISCORD_ONLY", response.Code, name)
+		assert.Equal(t, middleware.WtDiscordOnlyMessage, response.Message, name)
+	}
+	// Clearing any other binding still goes on to the administrator check.
+	assert.Equal(t, http.StatusUnauthorized, serve(http.MethodDelete, "/api/user/7/bindings/github", "").Code)
 }

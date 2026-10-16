@@ -36,6 +36,8 @@ type discordUser struct {
 	UID  string `json:"id"`
 	ID   string `json:"username"`
 	Name string `json:"global_name"`
+	// wind-tide: the avatar hash, used to cache the member avatar.
+	Avatar string `json:"avatar"`
 }
 
 func (p *DiscordProvider) GetName() string {
@@ -149,6 +151,8 @@ func (p *DiscordProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*
 		ProviderUserID: discordUser.UID,
 		Username:       discordUser.ID,
 		DisplayName:    discordUser.Name,
+		// wind-tide: pass the avatar hash on to the sign-in gate.
+		Extra: map[string]any{"avatar": discordUser.Avatar},
 	}, nil
 }
 

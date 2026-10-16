@@ -33,6 +33,7 @@ func (user *UserBase) WriteContext(c *gin.Context) {
 	common.SetContextKey(c, constant.ContextKeyUserEmail, user.Email)
 	common.SetContextKey(c, constant.ContextKeyUserName, user.Username)
 	common.SetContextKey(c, constant.ContextKeyUserSetting, user.GetSetting())
+	common.SetContextKey(c, constant.ContextKeyUserRole, user.Role) // wind-tide: see ModelRequestRateLimit
 }
 
 func (user *UserBase) GetSetting() dto.UserSetting {

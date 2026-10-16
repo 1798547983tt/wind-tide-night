@@ -53,6 +53,9 @@ const (
 	ContextKeyUserGroup   ContextKey = "user_group"
 	ContextKeyUsingGroup  ContextKey = "group"
 	ContextKeyUserName    ContextKey = "username"
+	// wind-tide: the role of the authenticated user, read by the model rate
+	// limit to exempt the owner.
+	ContextKeyUserRole ContextKey = "user_role"
 
 	ContextKeyLocalCountTokens ContextKey = "local_count_tokens"
 

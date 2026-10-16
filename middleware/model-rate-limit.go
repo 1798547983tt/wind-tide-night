@@ -179,6 +179,12 @@ func ModelRequestRateLimit() func(c *gin.Context) {
 			c.Next()
 			return
 		}
+		// wind-tide: the owner (root) is not rate limited (wind-tide/API.md §10).
+		// TokenAuth records the role of the key's account in the context.
+		if common.GetContextKeyInt(c, constant.ContextKeyUserRole) == common.RoleRootUser {
+			c.Next()
+			return
+		}
 
 		// 计算限流参数
 		duration := rateLimitDurationSeconds(setting.ModelRequestRateLimitDurationMinutes)

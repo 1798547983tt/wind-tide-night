@@ -34,6 +34,9 @@ type oauthFlowPayload struct {
 	Telegram        *oauth.TelegramOAuthFlow       `json:"telegram,omitempty"`
 	SessionIdentity *service.AuthIdentity          `json:"session_identity,omitempty"`
 	Authorization   *model.AuthFlowAuthorization   `json:"authorization,omitempty"`
+	// wind-tide: digest of the nonce that binds a Discord sign-in to the
+	// browser that started it (wind-tide/API.md §3).
+	WtLoginBinding string `json:"wt_login_binding,omitempty"`
 }
 
 // providerParams returns the params of messages that name the OAuth provider.
@@ -109,6 +112,15 @@ func GenerateOAuthCode(c *gin.Context) {
 			}
 			flowPayload.Verification = verification
 		}
+	}
+	// wind-tide: a Discord sign-in can only finish in this browser.
+	if request.Intent == model.AuthFlowIntentLogin && request.Provider == "discord" {
+		binding, err := wtBindOAuthLogin(c)
+		if err != nil {
+			writeSecurityOperationError(c, err)
+			return
+		}
+		flowPayload.WtLoginBinding = binding
 	}
 	payload, err := common.Marshal(flowPayload)
 	if err != nil {
@@ -200,6 +212,15 @@ func HandleOAuth(c *gin.Context) {
 	} else if pendingFlow.Intent != model.AuthFlowIntentLogin {
 		common.ApiErrorT(c, "Invalid parameters")
 		return
+	}
+	// wind-tide: a Discord sign-in finishes only in the browser that started
+	// it (login CSRF, wind-tide/API.md §3).
+	if pendingFlow.Intent == model.AuthFlowIntentLogin && providerName == "discord" {
+		var payload oauthFlowPayload
+		if common.UnmarshalJsonStr(pendingFlow.Payload, &payload) != nil || !wtCheckOAuthLogin(c, payload.WtLoginBinding) {
+			writeAccountStatusError(c, http.StatusForbidden, "State parameter is empty or mismatched")
+			return
+		}
 	}
 
 	// 3. Check if provider is enabled
@@ -305,6 +326,12 @@ func handleOAuthVerification(c *gin.Context, provider string, oauthUser *oauth.O
 }
 
 func handleOAuthLogin(c *gin.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, token *oauth.OAuthToken, flow *model.AuthFlow) {
+	// wind-tide: Discord sign-in goes through the allowlist gate instead of
+	// find-or-create (wind-tide/API.md §3).
+	if _, ok := provider.(*oauth.DiscordProvider); ok {
+		wtHandleDiscordLogin(c, oauthUser)
+		return
+	}
 	// 7. Find or create user
 	var payload oauthFlowPayload
 	if err := common.UnmarshalJsonStr(flow.Payload, &payload); err != nil {

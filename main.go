@@ -51,6 +51,10 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "plugin" {
 		os.Exit(jsplugin.RunCLI(os.Args[2:], os.Stdout, os.Stderr))
 	}
+	// wind-tide: maintenance commands such as `wt emergency-login`.
+	if len(os.Args) > 1 && os.Args[1] == "wt" {
+		os.Exit(runWtCommand(os.Args[2:], os.Stdout, os.Stderr))
+	}
 	startTime := time.Now()
 	kitutil.SetLogging(common.SysLog, func(message string) {
 		logger.LogError(nil, message)
@@ -303,6 +307,12 @@ func InitResources() error {
 
 	logger.SetupLogger()
 
+	// wind-tide: no node runs without the owner's Discord ID (wind-tide/API.md §1).
+	if err := model.WtCheckOwnerDiscordID(); err != nil {
+		common.FatalLog(common.LogText("cannot start: %s", err.Error()))
+		return err
+	}
+
 	// Initialize model settings
 	ratio_setting.InitRatioSettings()
 
@@ -325,6 +335,15 @@ func InitResources() error {
 		}
 	}
 
+	// wind-tide: store the wind-tide defaults and create the owner's root
+	// account before the setup check, so the setup wizard never appears
+	// (wind-tide/API.md §1, §10 and §11).
+	if common.IsMasterNode {
+		if err := model.WtPrepareDatabase(); err != nil {
+			common.FatalLog(common.LogText("failed to prepare the database for wind-tide: %s", err.Error()))
+			return err
+		}
+	}
 	model.CheckSetup()
 
 	// Initialize options, should after model.InitDB()
@@ -348,6 +367,16 @@ func InitResources() error {
 	err = common.InitRedisClient()
 	if err != nil {
 		return err
+	}
+
+	// wind-tide: bind the root account to the owner and, once, disable the
+	// accounts outside the allowlist; this revokes sessions, so it waits for
+	// the log database and Redis (wind-tide/API.md §1).
+	if common.IsMasterNode {
+		if err := model.WtTakeOverDatabase(); err != nil {
+			common.FatalLog(common.LogText("failed to take over the database for wind-tide: %s", err.Error()))
+			return err
+		}
 	}
 
 	perfmetrics.Init()

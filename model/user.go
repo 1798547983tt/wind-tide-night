@@ -819,6 +819,13 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 	if err = tx.First(&current, user.Id).Error; err != nil {
 		return err
 	}
+	// wind-tide: only an account on the Discord allowlist is enabled, and a
+	// removed member only by restoring the entry (wind-tide/API.md §5).
+	if newUser.Status == common.UserStatusEnabled && current.Status != common.UserStatusEnabled {
+		if err = refuseWtUnlistedAccountWithTx(tx, &current); err != nil {
+			return err
+		}
+	}
 	// Updates(struct) ignores zero values. Match that behavior when deciding
 	// whether this request actually changes authentication-sensitive state;
 	// partial self-profile updates intentionally leave role/status/group empty.
@@ -907,6 +914,11 @@ func (user *User) EditWithTx(tx *gorm.DB, updatePassword bool) error {
 func (user *User) ClearBinding(bindingType string) error {
 	if user.Id == 0 {
 		return errors.New("user id is empty")
+	}
+	// wind-tide: the Discord binding is how a member signs in and how the
+	// allowlist finds the account, so it is never cleared (wind-tide/API.md §3).
+	if strings.ToLower(strings.TrimSpace(bindingType)) == "discord" {
+		return ErrWtDiscordOnly
 	}
 
 	bindingColumnMap := map[string]string{
@@ -1365,7 +1377,13 @@ func IncreaseUserQuota(id int, quota int, db bool) (err error) {
 }
 
 func increaseUserQuota(id int, quota int) (err error) {
-	result := DB.Model(&User{}).
+	return increaseUserQuotaWithTx(DB, id, quota)
+}
+
+// wind-tide: increaseUserQuotaWithTx is the capped wallet credit of
+// increaseUserQuota inside the caller's transaction (used by check-in).
+func increaseUserQuotaWithTx(tx *gorm.DB, id int, quota int) error {
+	result := tx.Model(&User{}).
 		Where("id = ? AND quota <= ?", id, common.MaxWalletQuota-quota).
 		Update("quota", gorm.Expr("quota + ?", quota))
 	if result.Error != nil {
@@ -1375,7 +1393,7 @@ func increaseUserQuota(id int, quota int) (err error) {
 		return nil
 	}
 	var count int64
-	if err := DB.Model(&User{}).Where("id = ?", id).Count(&count).Error; err != nil {
+	if err := tx.Model(&User{}).Where("id = ?", id).Count(&count).Error; err != nil {
 		return err
 	}
 	if count == 0 {

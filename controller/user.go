@@ -521,6 +521,8 @@ func buildSelfUserData(user *model.User) map[string]any {
 		"stripe_customer":   user.StripeCustomer,
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":       permissions,
+		// wind-tide: the cached Discord avatar, "" for the default avatar.
+		"avatar_url": model.WtAvatarURLForDiscordID(user.DiscordId),
 	}
 }
 

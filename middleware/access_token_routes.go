@@ -306,6 +306,18 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 
 	// router/relay-router.go
 	"POST /pg/chat/completions": accessTokenSessionRule,
+
+	// wind-tide: router/wt_router.go
+	"GET /api/wt/leaderboard":                  accessTokenAnyRule,
+	"GET /api/wt/allowlist":                    accessTokenScopeRule("user:read"),
+	"POST /api/wt/allowlist":                   accessTokenScopeRule("user:write"),
+	"PUT /api/wt/allowlist/:id":                accessTokenScopeRule("user:write"),
+	"POST /api/wt/allowlist/:id/remove":        accessTokenScopeRule("user:write"),
+	"POST /api/wt/allowlist/:id/restore":       accessTokenScopeRule("user:write"),
+	"GET /api/wt/entry-requests":               accessTokenScopeRule("user:read"),
+	"GET /api/wt/entry-requests/pending-count": accessTokenScopeRule("user:read"),
+	"POST /api/wt/entry-requests/:id/approve":  accessTokenScopeRule("user:write"),
+	"POST /api/wt/entry-requests/:id/reject":   accessTokenScopeRule("user:write"),
 }
 
 var (
