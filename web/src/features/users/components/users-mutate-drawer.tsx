@@ -386,28 +386,9 @@ export function UsersMutateDrawer({
                     </FormItem>
                   )}
                 />
-
-                <FormField
-                  control={form.control}
-                  name='password'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Password')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type='password'
-                          placeholder={
-                            isUpdate
-                              ? t('Leave empty to keep unchanged')
-                              : t('Enter password (8–128 characters)')
-                          }
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {/* wind-tide: no password field. Accounts sign in with
+                    Discord only, and the server refuses setting a password
+                    (wind-tide/API.md §3). */}
               </SideDrawerSection>
 
               {/* Group & Quota Settings (Update only) */}

@@ -503,6 +503,8 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   'wt.emergency_login_failed': 'Emergency login attempt failed',
   'wt.takeover':
     'Disabled {{accounts}} accounts outside the allowlist when the site took over an existing database',
+  'wt.passwords_cleared':
+    'Cleared the passwords of {{accounts}} accounts, as this site signs in and verifies with Discord only',
   'wt.owner_rebound':
     'Bound the root account to the new owner Discord account and cleared its password: deleted {{access_tokens}} access tokens, {{passkeys}} passkeys and {{two_factor}} two-factor setups, and switched off {{relay_keys}} API keys',
   // System settings
@@ -640,16 +642,23 @@ export function renderAuditContent(
     }
     return t('Batch deleted redemption codes (count not recorded)')
   }
-  // wind-tide: a removal that took access away from a linked account also
-  // says what it revoked.
-  if (
-    op.action === 'wt.allowlist_remove' &&
-    typeof op.params?.access_tokens === 'number'
-  ) {
-    return t(
-      'Removed allowlist entry {{id}}: deleted {{access_tokens}} access tokens and switched off {{relay_keys}} API keys',
-      { ...op.params }
-    )
+  // wind-tide: a removal that took access away from a linked account, and a
+  // takeover that took it away from the accounts it disabled, also say what
+  // they revoked. Takeovers audited before they revoked anything have no
+  // counts.
+  if (typeof op.params?.access_tokens === 'number') {
+    if (op.action === 'wt.allowlist_remove') {
+      return t(
+        'Removed allowlist entry {{id}}: deleted {{access_tokens}} access tokens and switched off {{relay_keys}} API keys',
+        { ...op.params }
+      )
+    }
+    if (op.action === 'wt.takeover') {
+      return t(
+        'Disabled {{accounts}} accounts outside the allowlist when the site took over an existing database: deleted {{access_tokens}} access tokens and switched off {{relay_keys}} API keys',
+        { ...op.params }
+      )
+    }
   }
   const template = AUDIT_TEMPLATES[op.action]
   if (!template) return null

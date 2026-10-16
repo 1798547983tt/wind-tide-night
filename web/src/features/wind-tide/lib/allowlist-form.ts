@@ -11,13 +11,7 @@ import { z } from 'zod'
 
 // Discord user IDs are snowflakes: 17 to 20 digits.
 const DISCORD_ID_PATTERN = /^\d{17,20}$/
-const USERNAME_MAX_LENGTH = 64
 const NOTE_MAX_LENGTH = 255
-
-/** The server drops a leading @ the same way. */
-function bareUsername(value: string): string {
-  return value.replace(/^@/, '')
-}
 
 const noteSchema = z
   .string()
@@ -27,41 +21,23 @@ const noteSchema = z
     message: 'Note must be 255 characters or fewer',
   })
 
-export const allowlistEntryFormSchema = z
-  .object({
-    discord_id: z
-      .string()
-      .trim()
-      .refine((id) => id === '' || DISCORD_ID_PATTERN.test(id), {
-        message: 'A Discord user ID is 17 to 20 digits',
-      }),
-    discord_username: z
-      .string()
-      .trim()
-      .refine(
-        (username) => [...bareUsername(username)].length <= USERNAME_MAX_LENGTH,
-        { message: 'Username must be 64 characters or fewer' }
-      ),
-    note: noteSchema,
-  })
-  .superRefine((values, ctx) => {
-    if (
-      values.discord_id === '' &&
-      bareUsername(values.discord_username) === ''
-    ) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['discord_id'],
-        message: 'Enter a Discord user ID or username',
-      })
-    }
-  })
+// Entries name a Discord user ID only: anyone can take a Discord username
+// nobody holds, so a name identifies nobody.
+export const allowlistEntryFormSchema = z.object({
+  discord_id: z
+    .string()
+    .trim()
+    .min(1, { message: 'Enter a Discord user ID' })
+    .regex(DISCORD_ID_PATTERN, {
+      message: 'A Discord user ID is 17 to 20 digits',
+    }),
+  note: noteSchema,
+})
 
 export type AllowlistEntryFormValues = z.infer<typeof allowlistEntryFormSchema>
 
 export const ALLOWLIST_ENTRY_FORM_DEFAULTS: AllowlistEntryFormValues = {
   discord_id: '',
-  discord_username: '',
   note: '',
 }
 

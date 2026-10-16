@@ -26,6 +26,25 @@ import (
 // account by sending a callback link (login CSRF).
 const wtOAuthLoginCookie = "wt_oauth_login"
 
+// newWtOAuthLoginCookie is the sign-in cookie with a value and a lifetime.
+// Over HTTPS its name carries the __Host- prefix, which browsers accept only
+// on a Secure cookie with Path=/ and no Domain, so neither a sibling
+// subdomain nor a plain-HTTP response can plant or overwrite it.
+func newWtOAuthLoginCookie(value string, maxAge int) *http.Cookie {
+	cookie := &http.Cookie{
+		Name:     wtOAuthLoginCookie,
+		Value:    value,
+		Path:     "/api/oauth",
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	}
+	if common.SessionCookieSecure {
+		cookie.Name, cookie.Path, cookie.Secure = "__Host-"+wtOAuthLoginCookie, "/", true
+	}
+	return cookie
+}
+
 // wtGateMessages answer a Discord account the gate does not admit.
 var wtGateMessages = map[string]string{
 	model.WtEntryPending:  "Your entry request is waiting for approval",
@@ -126,15 +145,7 @@ func wtBindOAuthLogin(c *gin.Context) (string, error) {
 		return "", err
 	}
 	nonce := base64.RawURLEncoding.EncodeToString(raw)
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     wtOAuthLoginCookie,
-		Value:    nonce,
-		Path:     "/api/oauth",
-		MaxAge:   int(oauthAuthFlowTTL / time.Second),
-		HttpOnly: true,
-		Secure:   common.SessionCookieSecure,
-		SameSite: http.SameSiteLaxMode,
-	})
+	http.SetCookie(c.Writer, newWtOAuthLoginCookie(nonce, int(oauthAuthFlowTTL/time.Second)))
 	digest := sha256.Sum256([]byte(nonce))
 	return hex.EncodeToString(digest[:]), nil
 }
@@ -142,17 +153,10 @@ func wtBindOAuthLogin(c *gin.Context) (string, error) {
 // wtCheckOAuthLogin clears the sign-in cookie and reports whether it holds
 // the nonce of the flow's binding.
 func wtCheckOAuthLogin(c *gin.Context, binding string) bool {
-	nonce, err := c.Cookie(wtOAuthLoginCookie)
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     wtOAuthLoginCookie,
-		Value:    "",
-		Path:     "/api/oauth",
-		MaxAge:   -1,
-		Expires:  time.Unix(1, 0),
-		HttpOnly: true,
-		Secure:   common.SessionCookieSecure,
-		SameSite: http.SameSiteLaxMode,
-	})
+	cleared := newWtOAuthLoginCookie("", -1)
+	cleared.Expires = time.Unix(1, 0)
+	nonce, err := c.Cookie(cleared.Name)
+	http.SetCookie(c.Writer, cleared)
 	if err != nil || nonce == "" || binding == "" {
 		return false
 	}

@@ -82,12 +82,9 @@ export function Security() {
             <h3 id='security-authentication' className='text-sm font-semibold'>
               {t('Login & Authentication')}
             </h3>
-            <AccountActionCard
-              action='password'
-              username={profile.username}
-              hasPassword={profile.has_password}
-              onUpdate={refreshProfile}
-            />
+            {/* wind-tide: no password card. Accounts sign in with Discord
+                only, and the server refuses setting a password
+                (wind-tide/API.md §3). */}
             <TitledCard
               title={t('Account Bindings')}
               icon={<Link2 className='size-4' />}

@@ -52,8 +52,7 @@ export function AllowlistAddDialog() {
     mutationFn: async (values: AllowlistEntryFormValues) =>
       requireServerSuccess(
         await addAllowlistEntry({
-          discord_id: values.discord_id || undefined,
-          discord_username: values.discord_username || undefined,
+          discord_id: values.discord_id,
           note: values.note || undefined,
         })
       ),
@@ -74,7 +73,7 @@ export function AllowlistAddDialog() {
       }}
       title={t('Add entry')}
       description={t(
-        'Fill in a Discord user ID, a username, or both. An entry with only a username locks to the first account that signs in with it.'
+        'Fill in the Discord user ID of the person to let in. A username is not enough, as anyone can take a free one: someone you know only by name can sign in once to send an entry request, which you approve under Entry requests.'
       )}
       contentClassName='sm:max-w-lg'
       footer={
@@ -112,22 +111,6 @@ export function AllowlistAddDialog() {
                   {t(
                     '17 to 20 digits. In Discord, turn on Developer Mode, then right-click the person and choose Copy User ID.'
                   )}
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name='discord_username'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('Discord username')}</FormLabel>
-                <FormControl>
-                  <Input {...field} autoComplete='off' />
-                </FormControl>
-                <FormDescription>
-                  {t('The name after @, not the display name.')}
                 </FormDescription>
                 <FormMessage />
               </FormItem>

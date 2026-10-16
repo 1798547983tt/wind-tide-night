@@ -255,6 +255,17 @@ func wtListedEntry(t *testing.T, discordID string) model.WtAllowlistItem {
 	return items[0]
 }
 
+// addWtLegacyPrefill stores an unpinned username pre-fill the way the owner
+// added one before the allowlist took Discord user IDs only.
+func addWtLegacyPrefill(t *testing.T, username string) model.WtAllowlistEntry {
+	t.Helper()
+	key := strings.ToLower(username)
+	now := time.Now().Unix()
+	entry := model.WtAllowlistEntry{DiscordUsername: username, UsernameKey: &key, Status: model.WtAllowlistActive, CreatedAt: now, UpdatedAt: now}
+	require.NoError(t, model.DB.Create(&entry).Error)
+	return entry
+}
+
 // wtEntryRequestStatus is the state of the entry request of a Discord ID, ""
 // when there is none.
 func wtEntryRequestStatus(t *testing.T, discordID string) string {
@@ -449,12 +460,10 @@ func TestWtSignInGate(t *testing.T) {
 		require.NotNil(t, listed.User)
 		assert.Equal(t, "discord_"+strconv.Itoa(blocker.Id+2), listed.User.Username)
 
-		// A username pre-fill is pinned to the first Discord ID that signs in
-		// with it; another account using the same name later is not admitted.
-		prefill, err := model.WtAddAllowlistEntry(model.WtAllowlistInput{DiscordUsername: "@PreFill", Note: "friend"}, now)
-		require.NoError(t, err)
-		_, err = model.WtAddAllowlistEntry(model.WtAllowlistInput{DiscordUsername: "prefill"}, now)
-		assert.ErrorIs(t, err, model.ErrWtAllowlistDuplicate)
+		// A username pre-fill added before the allowlist took IDs only is
+		// pinned to the first Discord ID that signs in with it; another
+		// account using the same name later is not admitted.
+		prefill := addWtLegacyPrefill(t, "PreFill")
 		pinned := admitWtAccount(t, model.WtDiscordIdentity{DiscordId: "300000000000000003", Username: "prefill"}, now)
 		require.NotNil(t, pinned.User)
 		impostor := admitWtAccount(t, model.WtDiscordIdentity{DiscordId: "400000000000000004", Username: "PreFill"}, now)
@@ -534,43 +543,38 @@ func TestWtSignInGate(t *testing.T) {
 	})
 }
 
-// A username pre-fill admits one Discord account only: the applicant waiting
-// under that name when the owner adds it, the applicant the owner approves, or
+// The allowlist adds Discord user IDs only: anyone can take a Discord username
+// nobody holds, so a name identifies nobody. A username pre-fill added before
+// that admits one Discord account only: the applicant the owner approves, or
 // else the first account that signs in with the name. Pinning it approves that
 // account's entry request.
 func TestWtUsernamePrefill(t *testing.T) {
 	forEachWtDatabase(t, func(t *testing.T) {
 		now := time.Now()
+		_, owner := wtOwnerSession(t)
 
-		// Alice is waiting when the owner adds her name: the pre-fill is
-		// pinned to her at once and her request is approved with it, so
-		// another account named alice is not admitted later.
+		// A name without an ID is refused, also while an applicant waits under
+		// it; the applicant keeps waiting for the owner's answer.
 		alice := model.WtDiscordIdentity{DiscordId: "810000000000000081", Username: "alice"}
 		assert.Equal(t, model.WtEntryPending, admitWtAccount(t, alice, now).Gate)
-		added, err := model.WtAddAllowlistEntry(model.WtAllowlistInput{DiscordUsername: "@Alice"}, now)
+		for _, body := range []string{`{"discord_username":"@Alice"}`, `{"discord_id":" ","discord_username":"alice","note":"friend"}`} {
+			added := decodeSecurityEnrollmentResponse(t, wtRequest{method: http.MethodPost, target: "/api/wt/allowlist", body: body,
+				identity: owner, role: common.RoleRootUser}.serve(WtAddAllowlistEntry))
+			assert.False(t, added.Success, body)
+			assert.Equal(t, "Enter a Discord user ID", added.Message, body)
+		}
+		_, listed, err := model.WtListAllowlist("", "", 0, 10)
 		require.NoError(t, err)
-		assert.Equal(t, alice.DiscordId, added.DiscordId)
-		assert.Equal(t, model.WtEntryApproved, wtEntryRequestStatus(t, alice.DiscordId))
-		requests, _, err := model.WtListEntryRequests("", 0, 10)
-		require.NoError(t, err)
-		require.Len(t, requests, 1)
-		_, err = model.WtApproveEntryRequest(requests[0].Id, now)
-		assert.ErrorIs(t, err, model.ErrWtEntryRequestDecided)
-		impostor := admitWtAccount(t, model.WtDiscordIdentity{DiscordId: "820000000000000082", Username: "alice"}, now)
-		assert.Nil(t, impostor.User)
-		assert.Equal(t, model.WtEntryPending, impostor.Gate)
-		require.NotNil(t, admitWtAccount(t, alice, now).User)
-		assert.Equal(t, added.Id, wtListedEntry(t, alice.DiscordId).Id)
+		assert.Zero(t, listed)
+		assert.Equal(t, model.WtEntryPending, wtEntryRequestStatus(t, alice.DiscordId))
 
-		// With two applicants under one name the pre-fill stays open until the
-		// owner approves one of them; it is then pinned to that one.
+		// With applicants waiting under a pre-fill's name it stays open until
+		// the owner approves one of them; it is then pinned to that one.
 		carol := model.WtDiscordIdentity{DiscordId: "830000000000000083", Username: "carol"}
 		namesake := model.WtDiscordIdentity{DiscordId: "840000000000000084", Username: "Carol"}
 		admitWtAccount(t, carol, now)
 		admitWtAccount(t, namesake, now)
-		open, err := model.WtAddAllowlistEntry(model.WtAllowlistInput{DiscordUsername: "carol"}, now)
-		require.NoError(t, err)
-		assert.Empty(t, open.DiscordId)
+		open := addWtLegacyPrefill(t, "carol")
 		var carolRequest model.WtEntryRequest
 		require.NoError(t, model.DB.Where("discord_id = ?", carol.DiscordId).First(&carolRequest).Error)
 		_, err = model.WtApproveEntryRequest(carolRequest.Id, now)
@@ -583,14 +587,11 @@ func TestWtUsernamePrefill(t *testing.T) {
 		assert.Equal(t, model.WtEntryPending, admitWtAccount(t, namesake, now).Gate)
 		require.NotNil(t, admitWtAccount(t, carol, now).User)
 
-		// A pre-fill nobody waits under is pinned at the first sign-in with the
-		// name, which approves the account's earlier request and is audited
-		// once.
+		// A pre-fill is pinned at the first sign-in with the name, which
+		// approves the account's earlier request and is audited once.
 		wanderer := model.WtDiscordIdentity{DiscordId: "850000000000000085", Username: "wanderer_old"}
 		admitWtAccount(t, wanderer, now)
-		prefill, err := model.WtAddAllowlistEntry(model.WtAllowlistInput{DiscordUsername: "@Wanderer"}, now)
-		require.NoError(t, err)
-		assert.Empty(t, prefill.DiscordId)
+		prefill := addWtLegacyPrefill(t, "Wanderer")
 		for range 2 {
 			signedIn := decodeSecurityEnrollmentResponse(t, wtDiscordSignIn(&oauth.OAuthUser{ProviderUserID: wanderer.DiscordId, Username: "wanderer"}))
 			require.True(t, signedIn.Success, signedIn.Message)
@@ -1114,6 +1115,33 @@ func TestWtDiscordSignInIsBoundToTheBrowser(t *testing.T) {
 		require.NoError(t, common.Unmarshal(verified.Data, &proof))
 		removed := decodeSecurityEnrollmentResponse(t, wtAllowlistStatus(WtRemoveAllowlistEntry, session, proof.ProofToken, entry.Id))
 		require.True(t, removed.Success, removed.Message)
+
+		// Over HTTPS the cookie name carries the __Host- prefix: browsers keep
+		// such a cookie only from a secure response, for the whole host and
+		// no other, so neither a sibling subdomain nor a plain-HTTP response
+		// can plant one. A cookie without the prefix no longer counts.
+		previousSecure := common.SessionCookieSecure
+		common.SessionCookieSecure = true
+		t.Cleanup(func() { common.SessionCookieSecure = previousSecure })
+		state, cookies = wtStartDiscord(t, login)
+		require.Len(t, cookies, 1)
+		assert.Equal(t, "__Host-wt_oauth_login", cookies[0].Name)
+		assert.Equal(t, "/", cookies[0].Path)
+		assert.Empty(t, cookies[0].Domain)
+		assert.True(t, cookies[0].Secure)
+		assert.True(t, cookies[0].HttpOnly)
+		assert.Equal(t, http.SameSiteLaxMode, cookies[0].SameSite)
+		unprefixed := wtFinishDiscord(wtRequest{cookies: []*http.Cookie{{Name: "wt_oauth_login", Value: cookies[0].Value}}}, state)
+		assert.Equal(t, http.StatusForbidden, unprefixed.Code)
+		finished = wtFinishDiscord(wtRequest{cookies: cookies}, state)
+		signedIn = decodeSecurityEnrollmentResponse(t, finished)
+		require.True(t, signedIn.Success, signedIn.Message)
+		sent = finished.Result().Cookies()
+		cleared = slices.IndexFunc(sent, func(cookie *http.Cookie) bool { return cookie.Name == "__Host-wt_oauth_login" })
+		require.GreaterOrEqual(t, cleared, 0)
+		assert.Negative(t, sent[cleared].MaxAge)
+		assert.Equal(t, "/", sent[cleared].Path)
+		assert.True(t, sent[cleared].Secure)
 	})
 }
 
@@ -1502,10 +1530,17 @@ func TestWtDiscordOnlyGuard(t *testing.T) {
 			{http.MethodGet, "/oauth/telegram/bind/:flow_token"},
 			{http.MethodGet, "/oauth/:provider"},
 			{http.MethodDelete, "/user/:id/bindings/:binding_type"},
+			{http.MethodPost, "/user/"},
+			{http.MethodPut, "/user/"},
 		} {
 			api.Handle(route.method, route.path, reached)
 		}
 		api.POST("/oauth/state", GenerateOAuthCode)
+		api.PUT("/user/self", func(c *gin.Context) {
+			body, err := io.ReadAll(c.Request.Body)
+			require.NoError(t, err)
+			c.Data(http.StatusOK, "application/json", body)
+		})
 
 		bind, _, err := model.CreateAuthFlow(model.AuthFlowCreate{Purpose: model.AuthFlowPurposeOAuth, Provider: "discord", Intent: model.AuthFlowIntentBind, UserId: 1, Payload: "{}", ExpiresAt: time.Now().Add(time.Minute)})
 		require.NoError(t, err)
@@ -1540,6 +1575,22 @@ func TestWtDiscordOnlyGuard(t *testing.T) {
 			// AdminClearUserBinding reads the binding type.
 			{http.MethodDelete, "/api/user/7/bindings/d%C4%B0scord", "", true},
 			{http.MethodDelete, "/api/user/7/bindings/%20DISCORD%20", "", true},
+			// No account has a password, so administrators create no accounts
+			// and nobody sets a password, in any spelling of the key that
+			// encoding/json matches to the password field.
+			{http.MethodPost, "/api/user/", `{"username":"guest","password":"guest-password"}`, true},
+			{http.MethodPut, "/api/user/self", `{"password":"new-password","original_password":""}`, true},
+			{http.MethodPut, "/api/user/self", `{"Password":"new-password"}`, true},
+			{http.MethodPut, "/api/user/self", `{"paſſword":"new-password"}`, true},
+			{http.MethodPut, "/api/user/self", `{"password":"","PASSWORD":"new-password"}`, true},
+			{http.MethodPut, "/api/user/self", `{"password":12345678}`, true},
+			{http.MethodPut, "/api/user/self", `[{"password":"new-password"}]`, true},
+			{http.MethodPut, "/api/user/", `{"id":7,"username":"member","password":"new-password"}`, true},
+			{http.MethodPut, "/api/user/", `{"id":7,"username":"member","Password":"new-password"}`, true},
+			{http.MethodPut, "/api/user/self", `{"display_name":"Tide"}`, false},
+			{http.MethodPut, "/api/user/self", `{"display_name":"Tide","password":"","original_password":""}`, false},
+			{http.MethodPut, "/api/user/self", `{"language":"zh","password":null}`, false},
+			{http.MethodPut, "/api/user/", `{"id":7,"username":"member","quota":5,"password":""}`, false},
 			// Second login factors, Discord sign-in and verification stay open.
 			{http.MethodPost, "/api/user/login/2fa", `{}`, false},
 			{http.MethodPost, "/api/user/login/verify", `{}`, false},
@@ -1578,6 +1629,12 @@ func TestWtDiscordOnlyGuard(t *testing.T) {
 		oversized := httptest.NewRecorder()
 		engine.ServeHTTP(oversized, httptest.NewRequest(http.MethodPost, "/api/oauth/state", strings.NewReader(strings.Repeat(" ", 64<<10)+`{"provider":"discord","intent":"login"}`)))
 		assert.Equal(t, http.StatusRequestEntityTooLarge, oversized.Code)
+
+		// A profile update reaches its handler with the body intact.
+		profile := httptest.NewRecorder()
+		engine.ServeHTTP(profile, httptest.NewRequest(http.MethodPut, "/api/user/self", strings.NewReader(`{"display_name":"Tide","password":""}`)))
+		assert.Equal(t, http.StatusOK, profile.Code)
+		assert.Equal(t, `{"display_name":"Tide","password":""}`, profile.Body.String())
 	})
 }
 
@@ -1666,9 +1723,16 @@ func TestWtTakeOverDatabase(t *testing.T) {
 		admin := createWtUser(t, model.User{Username: "admin", Role: common.RoleAdminUser})
 		banned := createWtUser(t, model.User{Username: "banned", DiscordId: "790000000000000079", Status: common.UserStatusDisabled})
 		keptSession, outsiderSession := wtSession(t, kept.Id), wtSession(t, outsider.Id)
-		outsiderKey := createWtAPIKey(t, outsider.Id, common.TokenStatusEnabled)
-		relay := newWtRelay()
+		keptKey, outsiderKey := createWtAPIKey(t, kept.Id, common.TokenStatusEnabled), createWtAPIKey(t, outsider.Id, common.TokenStatusEnabled)
+		keptPAT, _ := createScopedAccessToken(t, kept.Id, 0, "profile:read")
+		outsiderPAT, _ := createScopedAccessToken(t, outsider.Id, 0, "profile:read")
+		legacyToken := "wt-legacy-access-token-000000002"
+		require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", passwordOnly.Id).Update("access_token", legacyToken).Error)
+		relay, dashboard := newWtRelay(), newAccessTokenTestRouter()
 		require.Equal(t, http.StatusNoContent, wtRelayStatus(relay, outsiderKey))
+		for _, credential := range []string{keptPAT, outsiderPAT, legacyToken} {
+			require.Equal(t, http.StatusOK, wtDashboardStatus(dashboard, credential))
+		}
 
 		require.NoError(t, model.WtPrepareDatabase())
 		require.NoError(t, model.WtTakeOverDatabase())
@@ -1688,11 +1752,21 @@ func TestWtTakeOverDatabase(t *testing.T) {
 			"admin":    common.UserStatusDisabled,
 			"banned":   common.UserStatusDisabled,
 		}, statuses)
+		// A disabled account loses its browser sessions and access tokens, and
+		// its API keys are switched off, as when the owner removes a member.
 		_, _, err = service.ValidateLoginSession(outsiderSession)
 		assert.Error(t, err)
 		_, _, err = service.ValidateLoginSession(keptSession)
 		assert.NoError(t, err)
-		assert.Equal(t, http.StatusForbidden, wtRelayStatus(relay, outsiderKey))
+		assert.Equal(t, http.StatusUnauthorized, wtRelayStatus(relay, outsiderKey))
+		assert.Equal(t, http.StatusNoContent, wtRelayStatus(relay, keptKey))
+		for _, credential := range []string{outsiderPAT, legacyToken} {
+			assert.Equal(t, http.StatusUnauthorized, wtDashboardStatus(dashboard, credential))
+		}
+		assert.Equal(t, http.StatusOK, wtDashboardStatus(dashboard, keptPAT))
+		stored, err := model.GetUserById(passwordOnly.Id, true)
+		require.NoError(t, err)
+		assert.Empty(t, stored.Password)
 
 		// Accounts with a Discord ID get a removed entry the owner can restore.
 		for _, account := range []*model.User{outsider, banned} {
@@ -1705,7 +1779,7 @@ func TestWtTakeOverDatabase(t *testing.T) {
 		takeovers := wtAudits(t, "wt.takeover")
 		require.Len(t, takeovers, 1)
 		assert.Equal(t, root.Id, takeovers[0].UserId)
-		assert.JSONEq(t, `{"accounts":4,"removed_entries":2}`, wtAuditParams(t, takeovers[0]))
+		assert.JSONEq(t, `{"accounts":4,"removed_entries":2,"access_tokens":2,"relay_keys":1}`, wtAuditParams(t, takeovers[0]))
 		var marks int64
 		require.NoError(t, model.DB.Model(&model.Option{}).Where(&model.Option{Key: "WtAdoptedAt"}).Count(&marks).Error)
 		assert.EqualValues(t, 1, marks)
@@ -1724,9 +1798,17 @@ func TestWtTakeOverDatabase(t *testing.T) {
 		require.NoError(t, err)
 		_, err = model.WtRestoreAllowlistEntry(outsiderEntry.Id, accountID, time.Now())
 		require.NoError(t, err)
+		// The access token stays deleted and the API key stays off until the
+		// member switches it on again.
+		assert.Equal(t, http.StatusUnauthorized, wtRelayStatus(relay, outsiderKey))
+		assert.Equal(t, http.StatusUnauthorized, wtDashboardStatus(dashboard, outsiderPAT))
 
-		// Later starts change nothing, not even accounts created since.
+		// Later starts disable nobody, not even accounts created since. They
+		// clear every password set in the meantime: a password would replace
+		// Discord as the account's step-up verification.
 		late := createWtUser(t, model.User{Username: "late"})
+		require.NoError(t, model.DB.Model(&model.User{}).Where("id IN ?", []int{owner.Id, kept.Id}).Update("password", "not-a-password-hash").Error)
+		ownerSession := wtSession(t, owner.Id)
 		for range 2 {
 			require.NoError(t, model.WtPrepareDatabase())
 			require.NoError(t, model.WtTakeOverDatabase())
@@ -1740,6 +1822,19 @@ func TestWtTakeOverDatabase(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 777, restored.Quota)
 		assert.Len(t, wtAudits(t, "wt.takeover"), 1)
+		var withPassword int64
+		require.NoError(t, model.DB.Unscoped().Model(&model.User{}).Where("password <> ?", "").Count(&withPassword).Error)
+		assert.Zero(t, withPassword)
+		requirements, err := service.GetVerificationRequirements(ownerSession, service.VerificationScopeAdminUserManage)
+		require.NoError(t, err)
+		require.Len(t, requirements.Methods, 1)
+		assert.Equal(t, service.VerificationMethodOAuth, requirements.Methods[0].Method)
+		assert.True(t, requirements.Methods[0].Available, requirements.Methods[0].Reason)
+		cleared := wtAudits(t, "wt.passwords_cleared")
+		require.Len(t, cleared, 2)
+		assert.Equal(t, owner.Id, cleared[1].UserId)
+		assert.JSONEq(t, `{"accounts":1}`, wtAuditParams(t, cleared[0]))
+		assert.JSONEq(t, `{"accounts":2}`, wtAuditParams(t, cleared[1]))
 	})
 }
 

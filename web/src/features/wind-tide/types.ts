@@ -101,8 +101,7 @@ export type AllowlistEntry = {
 }
 
 export type AllowlistEntryInput = {
-  discord_id?: string
-  discord_username?: string
+  discord_id: string
   note?: string
 }
 

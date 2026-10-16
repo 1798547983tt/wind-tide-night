@@ -24,12 +24,18 @@
   - 审计 `wt.owner_rebound`，只记数量（第 12 节）。
 - 该 ID 已被别的账号占用：拒绝启动，提示 `WT_OWNER_DISCORD_ID is bound to another account; unbind or delete that account first`。
 
+**清空密码**：每次启动都清空所有账号的密码，已注销的账号也算在内。
+
+- 原因：账号留着密码时，上游会把密码当作它的二次验证方式，不再提供 Discord 验证。本站关闭了密码登录，密码这种方式不可用，结果这个账号的敏感操作（第 5 节）都没法验证。站点要是重新开启密码登录，二次验证又会退回到密码，例如从上游接管来的 root 还留着默认密码。
+- 第 3 节在服务端拒绝重新设置密码，这一步清掉的是 wind-tide 接手之前，或拒绝生效之前留下的密码。
+- 清掉了密码时审计 `wt.passwords_cleared`，只记账号数 `accounts`。没有可清的密码时不写这条审计。
+
 **接管已有数据库**：不是由 wind-tide 建的库，第一次启动时接管一次。
 
 - 禁用每一个非 root、并且没有 active 白名单条目的账号，原本就已禁用的也算在内。被禁用的账号 auth version 加一，会话失效，API Key 缓存清空。
 - 其中绑定了 Discord 的账号，补一条 `removed` 状态的白名单条目，备注为 `Removed by the wind-tide upgrade`。站长之后可以在白名单里恢复它。
-- 接管只禁用账号，不删除令牌，也不关闭 API Key。账号禁用期间这些凭据都用不了；恢复条目后会照旧可用。这一点和第 5 节的“移除”不同。
-- 审计一次 `wt.takeover`，记录禁用的账号数 `accounts` 和补出的条目数 `removed_entries`。没有可禁用的账号时不写这条审计。
+- 和第 5 节的“移除”一样，在禁用账号的同一个事务里撤销它的凭据：删除个人访问令牌和旧版 access token，关闭所有启用中的 API Key（保留，不删除）。之后恢复条目时，这些 Key 保持关闭，删掉的令牌也不会回来。
+- 审计一次 `wt.takeover`，记录禁用的账号数 `accounts`、补出的条目数 `removed_entries`、删除的令牌数 `access_tokens`（含旧版 access token）和关闭的 API Key 数 `relay_keys`。没有可禁用的账号时不写这条审计。
 - 最后写入选项 `WtAdoptedAt`（值为接管时间）。之后的启动看到它就不再接管，也不再补写默认选项（第 11 节）。接管中途失败时不写这个标记，下次启动会重来。
 
 ## 2. `/api/status` 新增字段
@@ -38,12 +44,14 @@
 
 ## 3. Discord 登录闸门
 
-**登录流程与 `wt_oauth_login` Cookie**：Discord 登录只能在发起它的浏览器里完成，用来防止登录 CSRF，也就是别人把自己的回调链接发给受害者，让受害者登进攻击者的账号。
+**登录流程与登录 Cookie**：Discord 登录只能在发起它的浏览器里完成，用来防止登录 CSRF，也就是别人把自己的回调链接发给受害者，让受害者登进攻击者的账号。
 
-- 前端照上游流程先请求 `POST /api/oauth/state`，body 为 `{ "provider": "discord", "intent": "login" }`。服务端返回 state 的同时种下 Cookie `wt_oauth_login`：
+- 前端照上游流程先请求 `POST /api/oauth/state`，body 为 `{ "provider": "discord", "intent": "login" }`。服务端返回 state 的同时种下登录 Cookie：
   - 值是随机数，登录流程里只存它的 SHA-256；
-  - 属性为 `HttpOnly`、`Path=/api/oauth`、`SameSite=Lax`、有效期 10 分钟；HTTPS 部署时再加 `Secure`。
-- 回调 `GET /api/oauth/discord?code=&state=` 必须由同一个浏览器带着这个 Cookie 发起。缺少 Cookie 或对不上时返回 HTTP 403，`message` 为 `State parameter is empty or mismatched`，不登录也不进入下面的闸门。
+  - 属性为 `HttpOnly`、`SameSite=Lax`、有效期 10 分钟；
+  - HTTPS 部署（`SESSION_COOKIE_SECURE=true`）时名为 `__Host-wt_oauth_login`，`Path=/`、`Secure`、不带 `Domain`。浏览器只接受本站 HTTPS 响应种下的这个名字，子域名和明文 HTTP 的响应都种不了、也盖不掉它；
+  - 否则名为 `wt_oauth_login`，`Path=/api/oauth`。
+- 回调 `GET /api/oauth/discord?code=&state=` 必须由同一个浏览器带着这个 Cookie 发起。缺少 Cookie 或对不上时返回 HTTP 403，`message` 为 `State parameter is empty or mismatched`，不登录也不进入下面的闸门。HTTPS 部署时只认带前缀的名字。
 - 回调无论成功与否都会清掉这个 Cookie。同一浏览器再次发起登录会换一个新值，所以只有最近一次发起的登录能完成。
 - 前端要求：这两个请求都是同源请求并带 Cookie（同源 `fetch` 的默认行为即可）。在别的浏览器或设备上打开回调链接会失败，这是预期行为。
 - 只约束 Discord 登录（`intent = "login"`）。Discord 二次验证（`intent = "verify"`，第 5 节）不用这个 Cookie。
@@ -56,7 +64,7 @@
    - 没有账号就自动创建成员账号：role 1，初始余额 0，display_name 取 global_name，没有就取 username。
    - 条目关联的账号已被删除：条目自动改为 removed，按第 4 步拒绝。站长恢复这个条目后，该 Discord 账号下次登录会得到一个新账号。
    - root 账号永远不会经由白名单条目登录，只有站长本人的 Discord ID 能进 root。
-3. 白名单里有用户名预填条目：状态为 active、用户名相同（忽略大小写和开头的 `@`），并且还没有绑定 ID。处理方式：
+3. 白名单里有旧版的用户名预填条目（现在已不能新建，见第 5 节）：状态为 active、用户名相同（忽略大小写和开头的 `@`），并且还没有绑定 ID。处理方式：
    - 把这个 Discord ID 锁定到该条目，同时记下当前用户名；已经持有该 ID 的账号也一并关联。
    - 该 ID 的 pending 入站申请改为 approved。
    - 审计 `wt.allowlist_pin`，然后按第 2 步处理。
@@ -91,7 +99,11 @@
 - Passkey 登录；
 - GitHub、OIDC、LinuxDO、WeChat、Telegram、自定义 OAuth 的登录与注册；
 - 任何 OAuth 账号绑定流程（`intent = "bind"`），包括 Discord；
-- 清除 Discord 绑定：成员自己解绑，以及管理员 `DELETE /api/user/:id/bindings/discord`。
+- 清除 Discord 绑定：成员自己解绑，以及管理员 `DELETE /api/user/:id/bindings/discord`；
+- 管理员新建用户 `POST /api/user/`。账号只能由 Discord 登录自动创建；
+- 设置或修改密码：`PUT /api/user/self`（成员改自己的资料）和 `PUT /api/user/`（管理员编辑用户）的 body 里有 `password` 键，并且值不是 `null` 或空字符串。键名不分大小写，按服务端解析字段的规则匹配，所以 `Password` 这类写法同样拒绝。body 解析不了时也拒绝。不带密码的其他修改照常处理。
+
+`POST /api/oauth/state`、`PUT /api/user/self` 和 `PUT /api/user/` 的 body 要先读出来判断：超过 64 KiB 时返回 HTTP 413，读取失败时返回 HTTP 400。
 
 ## 4. 应急登录链接
 
@@ -130,7 +142,7 @@ new-api wt emergency-login [--base-url https://your.site]
 }
 ```
 
-- `discord_id` 可以为空：只填了用户名、对方还没登录过。
+- `discord_id` 只有旧版的用户名预填条目才可能为空：对方还没登录过。
 - `user_id` 是这个条目放行的账号：已关联的账号；还没关联时，是已经持有该 Discord ID 的账号。没有账号或账号已删除时为 0。
 - `account_status` 是该账号当前的状态：
   - `enabled`：正常；
@@ -141,7 +153,7 @@ new-api wt emergency-login [--base-url https://your.site]
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/wt/allowlist?p=1&page_size=20&keyword=&status=` | `{items, total}`；keyword 匹配 Discord ID、用户名和备注 |
-| POST | `/api/wt/allowlist` | body `{discord_id?, discord_username?, note?}`，两个标识至少填一个。规则见下 |
+| POST | `/api/wt/allowlist` | body `{discord_id, note?}`，必须填 Discord 用户 ID。规则见下 |
 | PUT | `/api/wt/allowlist/:id` | body `{note}` |
 | POST | `/api/wt/allowlist/:id/remove` | 状态改为 removed，并禁用账号、撤销凭据；需要二次验证。见下 |
 | POST | `/api/wt/allowlist/:id/restore` | 只能恢复 removed 条目：状态改为 active，并重新启用账号；需要二次验证。见下 |
@@ -154,17 +166,19 @@ new-api wt emergency-login [--base-url https://your.site]
 
 **添加条目**：
 
+- 必须填 Discord 用户 ID：没填时提示 `Enter a Discord user ID`，格式不对时提示 `Invalid Discord user ID`。
+- 不能只填用户名。没人占用的 Discord 用户名谁都能拿去用，按用户名放行，等于放行第一个用这个名字登录的人。只知道对方用户名时，请对方先登录一次提交入站申请，站长再批准。body 里的 `discord_username` 会被忽略。
 - 站长自己的 Discord ID 不需要条目，拒绝并提示 `The owner does not need an allowlist entry`。
-- 同一个 Discord ID 或用户名（忽略大小写）已有条目时，提示 `This Discord account is already on the allowlist`。
-- 按 Discord ID 添加时，该 ID 的 pending 申请一并改为 approved。
-- 只填用户名时，这是一条预填，规则见第 3 节第 3 步。如果正好只有一个 pending 申请用的是这个用户名，预填立即锁定到这个申请人，申请也一并批准；有多个同名申请人时保持未锁定，谁先再次登录就锁定给谁。
+- 同一个 Discord ID 已有条目时，提示 `This Discord account is already on the allowlist`。
+- 该 ID 的 pending 申请一并改为 approved。
+- 以前建的用户名预填条目保留，规则见第 3 节第 3 步。
 
 **批准申请**：
 
 - 站长自己的 ID 拒绝：`The owner does not need an allowlist entry`。
 - 该 ID 的条目是 removed 时拒绝：`This Discord account has been removed, restore it from the allowlist instead`。
 - 申请已经批准过时拒绝：`This entry request has already been handled`。被拒绝的申请仍然可以批准。
-- 有一条还没锁定、用户名与申请人相同的预填时，直接把预填锁定给申请人，不再新建条目。这样这条预填不会再放行下一个使用这个名字登录的人。
+- 有一条还没锁定、用户名与申请人相同的旧版预填时，直接把预填锁定给申请人，不再新建条目。这样这条预填不会再放行下一个使用这个名字登录的人。
 
 **移除**：
 
@@ -301,13 +315,14 @@ new-api wt emergency-login [--base-url https://your.site]
 | `wt.allowlist_update` | 站长修改备注 | 站长 | 同上 |
 | `wt.allowlist_remove` | 站长移除条目 | 站长 | 同上，再加：`access_tokens`（删除的令牌数，含旧版 access token）、`relay_keys`（关闭的 API Key 数）、`verification_method`（做了二次验证时才有） |
 | `wt.allowlist_restore` | 站长恢复条目 | 站长 | `id`、`discord_id`、`discord_username`、`status`、目标账号、`verification_method`（做了二次验证时才有） |
-| `wt.allowlist_pin` | 用户名预填在登录时锁定到某个 Discord ID | 登录的成员 | `id`、`discord_id`、`discord_username` |
+| `wt.allowlist_pin` | 旧版用户名预填在登录时锁定到某个 Discord ID | 登录的成员 | `id`、`discord_id`、`discord_username` |
 | `wt.entry_approve` | 批准入站申请 | 站长 | `id`、`discord_id`、`discord_username` |
 | `wt.entry_reject` | 拒绝入站申请 | 站长 | 同上 |
 | `wt.emergency_link_issued` | `wt emergency-login` 生成链接 | 站长 | `expires_at` |
 | `wt.emergency_login` | 应急链接登录成功 | 站长 | 无 |
 | `wt.emergency_login_failed` | 应急链接登录失败 | 站长（操作人角色为 0，因为请求是匿名的） | 无 |
-| `wt.takeover` | 接管已有数据库时禁用了账号（第 1 节） | 站长 | `accounts`、`removed_entries` |
+| `wt.takeover` | 接管已有数据库时禁用了账号（第 1 节） | 站长 | `accounts`、`removed_entries`、`access_tokens`、`relay_keys` |
+| `wt.passwords_cleared` | 启动时清掉了账号的密码（第 1 节） | 站长 | `accounts` |
 | `wt.owner_rebound` | root 被重新绑定到站长 ID（第 1 节） | 站长 | `access_tokens`、`relay_keys`、`passkeys`、`two_factor`（启用中的两步验证数） |
 
 ## 13. 错误消息
@@ -323,7 +338,7 @@ new-api wt emergency-login [--base-url https://your.site]
 | `This site only supports signing in with Discord` | 第 3 节列出的被禁入口（`code = WT_DISCORD_ONLY`） |
 | `Emergency login link is invalid or has expired` | 应急登录的所有失败 |
 | `Invalid Discord user ID` | Discord ID 格式不对 |
-| `Enter a Discord user ID or username` | 添加条目时两个标识都没填 |
+| `Enter a Discord user ID` | 添加条目时没填 Discord 用户 ID |
 | `This Discord account is already on the allowlist` | 重复添加 |
 | `Allowlist entry does not exist` | 条目不存在 |
 | `The owner does not need an allowlist entry` | 给站长添加条目或批准站长的申请 |
@@ -335,4 +350,4 @@ new-api wt emergency-login [--base-url https://your.site]
 | `This Discord account has been removed, restore it from the allowlist instead` | 批准一个已移除的 Discord 账号，或在用户管理里启用它 |
 | `Only accounts on the allowlist can be enabled` | 在用户管理里启用一个没有白名单条目的账号 |
 
-另外沿用上游已有的消息：`State parameter is empty or mismatched`（Discord 回调缺少或对不上 `wt_oauth_login`）、`User has been banned`、`Invalid parameters`，以及第 5 节的二次验证消息。
+另外沿用上游已有的消息：`State parameter is empty or mismatched`（Discord 回调缺少或对不上登录 Cookie）、`User has been banned`、`Invalid parameters`，以及第 5 节的二次验证消息。

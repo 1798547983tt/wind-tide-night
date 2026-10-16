@@ -72,17 +72,22 @@ func WtPrepareDatabase() error {
 }
 
 // WtTakeOverDatabase runs on the master node once the log database and Redis
-// are ready. It binds the root account to WT_OWNER_DISCORD_ID and, the first
-// time only, disables every account that is not root and has no active
-// allowlist entry: a database set up before wind-tide must not keep members
-// the owner never admitted. Each account is disabled through the upstream
-// user update (its auth version advances), its browser sessions are revoked
-// and its cached API tokens dropped. An account with a Discord ID gets a
-// removed allowlist entry, so the owner can restore it. The sweep is audited
-// with counts only, and the marker is stored last, so a takeover that stopped
-// half-way runs again on the next start.
+// are ready. It binds the root account to WT_OWNER_DISCORD_ID and clears every
+// password (clearWtPasswords). The first time only, it disables every account
+// that is not root and has no active allowlist entry: a database set up
+// before wind-tide must not keep members the owner never admitted. Each
+// account is disabled like a member removed from the allowlist: through the
+// upstream user update (its auth version advances), with its access tokens
+// deleted and its API keys switched off in the same transaction, then its
+// browser sessions are revoked and its cached API tokens dropped. An account
+// with a Discord ID gets a removed allowlist entry, so the owner can restore
+// it. The sweep is audited with counts only, and the marker is stored last,
+// so a takeover that stopped half-way runs again on the next start.
 func WtTakeOverDatabase() error {
 	if err := WtBootstrapOwner(); err != nil {
+		return err
+	}
+	if err := clearWtPasswords(); err != nil {
 		return err
 	}
 	adopted, err := wtAdopted()
@@ -95,9 +100,11 @@ func WtTakeOverDatabase() error {
 		return err
 	}
 	disabled, recorded := 0, 0
+	var revoked WtRevokedCredentials
 	for _, candidate := range candidates {
 		var account *User
 		entryAdded := false
+		var accountRevoked WtRevokedCredentials
 		err := DB.Transaction(func(tx *gorm.DB) error {
 			// Allowlist first, then the account: the lock order of removal.
 			var entry *WtAllowlistEntry
@@ -135,6 +142,10 @@ func WtTakeOverDatabase() error {
 			if err := user.UpdateWithTx(tx, false); err != nil {
 				return err
 			}
+			var err error
+			if accountRevoked, err = revokeWtAccessWithTx(tx, user.Id); err != nil {
+				return err
+			}
 			account = &user
 			return nil
 		})
@@ -148,6 +159,8 @@ func WtTakeOverDatabase() error {
 		if entryAdded {
 			recorded++
 		}
+		revoked.AccessTokens += accountRevoked.AccessTokens
+		revoked.RelayKeys += accountRevoked.RelayKeys
 		if err := updateUserCache(*account); err != nil {
 			common.SysError(common.LogText("failed to update the cache of user %d: %s", account.Id, err.Error()))
 		}
@@ -166,7 +179,29 @@ func WtTakeOverDatabase() error {
 		}
 		RecordOperationAuditLog(owner.Id, owner.Role,
 			"Disabled "+strconv.Itoa(disabled)+" accounts outside the allowlist when wind-tide took over the database",
-			"", "wt.takeover", map[string]any{"accounts": disabled, "removed_entries": recorded}, nil, nil)
+			"", "wt.takeover", map[string]any{"accounts": disabled, "removed_entries": recorded, "access_tokens": revoked.AccessTokens, "relay_keys": revoked.RelayKeys}, nil, nil)
 	}
 	return DB.Clauses(clause.OnConflict{DoNothing: true}).Create(&Option{Key: wtAdoptedAtKey, Value: strconv.FormatInt(now, 10)}).Error
+}
+
+// clearWtPasswords removes every password, on every start. Password sign-in
+// is refused on this site, and a password would take Discord's place as the
+// account's step-up verification, which the site's settings then turn off
+// for the sensitive actions. WtDiscordOnly refuses setting a password; this
+// clears the ones set before wind-tide or before the site refused them. Only
+// the number of accounts is audited.
+func clearWtPasswords() error {
+	cleared := DB.Unscoped().Model(&User{}).Where("password <> ?", "").Update("password", "")
+	if cleared.Error != nil || cleared.RowsAffected == 0 {
+		return cleared.Error
+	}
+	common.SysLog(common.LogText("cleared the passwords of %d accounts: this site signs in and verifies with Discord only", cleared.RowsAffected))
+	owner, err := WtOwnerAccount()
+	if err != nil {
+		return err
+	}
+	RecordOperationAuditLog(owner.Id, owner.Role,
+		"Cleared the passwords of "+strconv.FormatInt(cleared.RowsAffected, 10)+" accounts, as this site signs in and verifies with Discord only",
+		"", "wt.passwords_cleared", map[string]any{"accounts": cleared.RowsAffected}, nil, nil)
+	return nil
 }

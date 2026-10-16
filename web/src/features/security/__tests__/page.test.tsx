@@ -171,9 +171,6 @@ describe('security page migration', () => {
       'Account Actions',
       'Privacy',
     ])
-    expect(
-      within(login).getByRole('button', { name: 'Change Password' })
-    ).toBeVisible()
     expect(within(login).getByText('Account Bindings')).toBeVisible()
     const verification = screen.getByRole('complementary', {
       name: 'Security verification',
@@ -222,25 +219,13 @@ describe('security page migration', () => {
     expect(screen.queryByText('Custom OAuth')).not.toBeInTheDocument()
   })
 
-  it('the password action opens the existing dialog by keyboard and Escape closes it', async () => {
-    const user = userEvent.setup()
+  // wind-tide: accounts sign in with Discord only and have no password; the
+  // server refuses setting one (wind-tide/API.md §3).
+  it('with Discord as the only sign-in, the page offers no password to set or change', async () => {
     await renderPage()
-    const action = await screen.findByRole('button', {
-      name: 'Change Password',
-    })
-    action.focus()
-    await user.keyboard('{Enter}')
-    const dialog = await screen.findByRole('dialog', {
-      name: 'Change Password',
-    })
-    expect(within(dialog).getByLabelText('Current Password')).toBeVisible()
-    expect(
-      within(dialog).getByLabelText('New Password', { exact: true })
-    ).toBeVisible()
-    await user.keyboard('{Escape}')
-    await waitFor(() =>
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    )
+    await screen.findByRole('region', { name: 'Login & Authentication' })
+
+    expect(screen.queryByRole('button', { name: /password/i })).toBeNull()
   })
 
   it('Profile retains preferences and no longer mounts security controls or requests', async () => {

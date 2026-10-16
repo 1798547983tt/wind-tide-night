@@ -44,6 +44,16 @@ describe('wind-tide audit entries', () => {
       '接管已有数据库时，停用了 3 个不在白名单里的账号',
     ],
     [
+      'wt.takeover',
+      { accounts: 3, removed_entries: 2, access_tokens: 2, relay_keys: 1 },
+      '接管已有数据库时，停用了 3 个不在白名单里的账号：删除了 2 个访问令牌，关闭了 1 个 API 密钥',
+    ],
+    [
+      'wt.passwords_cleared',
+      { accounts: 2 },
+      '清除了 2 个账号的密码：本站只用 Discord 登录和验证身份',
+    ],
+    [
       'wt.owner_rebound',
       { access_tokens: 2, relay_keys: 1, passkeys: 1, two_factor: 1 },
       '把 root 账号绑定到了新的站长 Discord 账号并清除了密码：删除了 2 个访问令牌、1 个 Passkey 和 1 个两步验证，关闭了 1 个 API 密钥',

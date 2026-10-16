@@ -51,7 +51,7 @@ var (
 
 var (
 	ErrWtDiscordIDInvalid     = common.NewMessage("Invalid Discord user ID")
-	ErrWtAllowlistIdentity    = common.NewMessage("Enter a Discord user ID or username")
+	ErrWtAllowlistIdentity    = common.NewMessage("Enter a Discord user ID")
 	ErrWtAllowlistDuplicate   = common.NewMessage("This Discord account is already on the allowlist")
 	ErrWtAllowlistNotFound    = common.NewMessage("Allowlist entry does not exist")
 	ErrWtAllowlistOwner       = common.NewMessage("The owner does not need an allowlist entry")
@@ -71,11 +71,11 @@ var (
 	errWtGateRetry = errors.New("the allowlist changed during sign-in")
 )
 
-// WtAllowlistEntry admits one Discord account. DiscordId stays NULL while an
-// entry only names a username that has not signed in yet, and UsernameKey is
-// the lower-cased username an administrator entered. Both columns are
-// nullable so that their unique indexes ignore missing values on SQLite,
-// MySQL and PostgreSQL alike.
+// WtAllowlistEntry admits one Discord account. DiscordId stays NULL while a
+// username pre-fill, added before the allowlist took Discord user IDs only,
+// waits for its name to sign in, and UsernameKey is the lower-cased username
+// of such a pre-fill. Both columns are nullable so that their unique indexes
+// ignore missing values on SQLite, MySQL and PostgreSQL alike.
 type WtAllowlistEntry struct {
 	Id              int     `json:"id"`
 	DiscordId       *string `json:"discord_id" gorm:"type:varchar(32);uniqueIndex:idx_wt_allowlist_discord_id"`
@@ -417,6 +417,9 @@ func syncWtDisplayName(user *User, name string) {
 
 // findWtPrefillWithTx locks the oldest active username pre-fill that names
 // username and has no Discord ID yet, and returns nil when there is none.
+// Pre-fills were added before the allowlist took Discord user IDs only; each
+// is pinned to the applicant the owner approves under its name, or else to
+// the first account that signs in with the name.
 func findWtPrefillWithTx(tx *gorm.DB, username string) (*WtAllowlistEntry, error) {
 	key := wtUsernameKey(username)
 	if key == "" {
@@ -607,9 +610,8 @@ func refreshWtEntryRequestWithTx(tx *gorm.DB, identity WtDiscordIdentity, now ti
 
 // WtAllowlistInput is what the owner enters for a new allowlist entry.
 type WtAllowlistInput struct {
-	DiscordId       string `json:"discord_id"`
-	DiscordUsername string `json:"discord_username"`
-	Note            string `json:"note"`
+	DiscordId string `json:"discord_id"`
+	Note      string `json:"note"`
 }
 
 // WtAllowlistItem is an allowlist entry as the owner sees it. UserId is the
@@ -818,110 +820,65 @@ func WtListAllowlist(keyword, status string, startIdx, num int) ([]WtAllowlistIt
 	return items, total, err
 }
 
-// wtAllowlistDuplicate reports whether an entry already names the Discord ID
-// or the username key.
-func wtAllowlistDuplicate(db *gorm.DB, discordID, usernameKey string) (bool, error) {
-	query := db.Model(&WtAllowlistEntry{})
-	switch {
-	case discordID != "" && usernameKey != "":
-		query = query.Where("discord_id = ? OR username_key = ? OR LOWER(discord_username) = ?", discordID, usernameKey, usernameKey)
-	case discordID != "":
-		query = query.Where("discord_id = ?", discordID)
-	default:
-		query = query.Where("username_key = ? OR LOWER(discord_username) = ?", usernameKey, usernameKey)
-	}
+// wtAllowlistDuplicate reports whether an entry already names the Discord ID.
+func wtAllowlistDuplicate(db *gorm.DB, discordID string) (bool, error) {
 	var count int64
-	err := query.Count(&count).Error
+	err := db.Model(&WtAllowlistEntry{}).Where("discord_id = ?", discordID).Count(&count).Error
 	return count > 0, err
 }
 
-// WtAddAllowlistEntry adds an active entry by Discord ID, by username
-// pre-fill, or by both. A pending entry request of the same Discord ID is
-// approved with it; a pre-fill without an ID is pinned to the one applicant
-// waiting under that username, whose request is approved with it. The owner
-// signs in without an entry, so the owner's ID is refused.
+// WtAddAllowlistEntry adds an active entry for a Discord user ID, and the
+// pending entry request of the ID is approved with it. Entries name an ID
+// only: anyone can take a Discord username nobody holds, so a name identifies
+// nobody, and a member known only by name signs in once to file an entry
+// request instead. The username pre-fills added before keep working, see
+// findWtPrefillWithTx. The owner signs in without an entry, so the owner's ID
+// is refused.
 func WtAddAllowlistEntry(input WtAllowlistInput, now time.Time) (*WtAllowlistItem, error) {
 	discordID := strings.TrimSpace(input.DiscordId)
-	username := strings.TrimPrefix(strings.TrimSpace(input.DiscordUsername), "@")
 	note := strings.TrimSpace(input.Note)
-	if discordID == "" && username == "" {
+	if discordID == "" {
 		return nil, ErrWtAllowlistIdentity
 	}
-	if discordID != "" && !WtValidDiscordID(discordID) {
+	if !WtValidDiscordID(discordID) {
 		return nil, ErrWtDiscordIDInvalid
 	}
-	if discordID != "" && discordID == WtOwnerDiscordID() {
+	if discordID == WtOwnerDiscordID() {
 		return nil, ErrWtAllowlistOwner
 	}
-	if utf8.RuneCountInString(username) > wtNameMaxLength || utf8.RuneCountInString(note) > wtNoteMaxLength {
+	if utf8.RuneCountInString(note) > wtNoteMaxLength {
 		return nil, errWtInvalidParameters
 	}
 	entry := WtAllowlistEntry{
-		DiscordUsername: username,
-		Note:            note,
-		Status:          WtAllowlistActive,
-		CreatedAt:       now.Unix(),
-		UpdatedAt:       now.Unix(),
-	}
-	if discordID != "" {
-		entry.DiscordId = &discordID
-	}
-	usernameKey := ""
-	if username != "" {
-		usernameKey = wtUsernameKey(username)
-		entry.UsernameKey = &usernameKey
+		DiscordId: &discordID,
+		Note:      note,
+		Status:    WtAllowlistActive,
+		CreatedAt: now.Unix(),
+		UpdatedAt: now.Unix(),
 	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		duplicate, err := wtAllowlistDuplicate(tx, discordID, usernameKey)
+		duplicate, err := wtAllowlistDuplicate(tx, discordID)
 		if err != nil {
 			return err
 		}
 		if duplicate {
 			return ErrWtAllowlistDuplicate
 		}
-		if discordID != "" {
-			var user User
-			if err := tx.Select("id").Where("discord_id = ?", discordID).Order("id").Limit(1).Find(&user).Error; err != nil {
-				return err
-			}
-			entry.UserId = user.Id
+		var user User
+		if err := tx.Select("id").Where("discord_id = ?", discordID).Order("id").Limit(1).Find(&user).Error; err != nil {
+			return err
 		}
+		entry.UserId = user.Id
 		if err := tx.Create(&entry).Error; err != nil {
 			return err
 		}
-		if discordID != "" {
-			return tx.Model(&WtEntryRequest{}).Where("discord_id = ? AND status = ?", discordID, WtEntryPending).
-				Updates(map[string]any{"status": WtEntryApproved, "decided_at": now.Unix()}).Error
-		}
-		// A username pre-fill is pinned at once to the applicant waiting
-		// under that name, so approving that applicant later cannot leave it
-		// open for another account. With more than one such applicant it
-		// stays open: the first of them to sign in again pins it.
-		var applicants []WtEntryRequest
-		if err := tx.Where("status = ? AND LOWER(discord_username) = ?", WtEntryPending, usernameKey).Limit(2).Find(&applicants).Error; err != nil {
-			return err
-		}
-		if len(applicants) != 1 || applicants[0].DiscordId == WtOwnerDiscordID() {
-			return nil
-		}
-		listed, err := findWtAllowlistEntryWithTx(tx, applicants[0].DiscordId)
-		if err != nil || listed != nil {
-			return err
-		}
-		var applicant WtEntryRequest
-		if err := lockForUpdate(tx.Where("id = ? AND status = ?", applicants[0].Id, WtEntryPending)).Limit(1).Find(&applicant).Error; err != nil {
-			return err
-		}
-		if applicant.Id == 0 || wtUsernameKey(applicant.DiscordUsername) != usernameKey {
-			return nil
-		}
-		_, err = pinWtPrefillWithTx(tx, &entry, applicant.DiscordId, applicant.DiscordUsername, now)
-		return err
+		return tx.Model(&WtEntryRequest{}).Where("discord_id = ? AND status = ?", discordID, WtEntryPending).
+			Updates(map[string]any{"status": WtEntryApproved, "decided_at": now.Unix()}).Error
 	})
 	if err != nil && !errors.Is(err, ErrWtAllowlistDuplicate) {
-		// A concurrent add of the same account fails on the unique indexes;
+		// A concurrent add of the same account fails on the unique index;
 		// answer it like any other duplicate.
-		if duplicate, checkErr := wtAllowlistDuplicate(DB, discordID, usernameKey); checkErr == nil && duplicate {
+		if duplicate, checkErr := wtAllowlistDuplicate(DB, discordID); checkErr == nil && duplicate {
 			return nil, ErrWtAllowlistDuplicate
 		}
 	}

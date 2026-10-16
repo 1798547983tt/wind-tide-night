@@ -22,7 +22,6 @@ import { SectionPageLayout } from '@/components/layout'
 
 import { UsersDeleteDialog } from './components/users-delete-dialog'
 import { UsersMutateDrawer } from './components/users-mutate-drawer'
-import { UsersPrimaryButtons } from './components/users-primary-buttons'
 import { UsersProvider, useUsers } from './components/users-provider'
 import { UsersTable } from './components/users-table'
 
@@ -30,13 +29,12 @@ function UsersContent() {
   const { t } = useTranslation()
   const { open, setOpen, currentRow } = useUsers()
 
+  // wind-tide: no Add User button. Accounts come from Discord sign-in only,
+  // and the server refuses creating one (wind-tide/API.md §3).
   return (
     <>
       <SectionPageLayout fixedContent>
         <SectionPageLayout.Title>{t('Users')}</SectionPageLayout.Title>
-        <SectionPageLayout.Actions>
-          <UsersPrimaryButtons />
-        </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
           <UsersTable />
         </SectionPageLayout.Content>

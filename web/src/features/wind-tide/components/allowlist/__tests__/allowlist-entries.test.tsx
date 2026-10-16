@@ -39,7 +39,8 @@ const signedInMember: AllowlistEntry = {
   updated_at: 1760000000,
 }
 
-// Added by username; nobody has signed in with it yet.
+// A username pre-fill added before the allowlist took Discord user IDs only;
+// nobody has signed in with it yet.
 const prefilled: AllowlistEntry = {
   id: 8,
   discord_id: '',
@@ -231,7 +232,19 @@ describe('the account column', () => {
 })
 
 describe('adding an allowlist entry', () => {
-  test('without a Discord user ID or username it asks for one and sends nothing', async () => {
+  test('the dialog asks for a Discord user ID and no username, since anyone can take a free username', async () => {
+    renderAllowlistTab()
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Add entry' })
+    )
+    const dialog = await screen.findByRole('dialog')
+
+    expect(within(dialog).getByLabelText('Discord user ID')).toBeInTheDocument()
+    expect(within(dialog).queryByLabelText('Discord username')).toBeNull()
+  })
+
+  test('without a Discord user ID it asks for one and sends nothing', async () => {
     const post = vi.spyOn(api, 'post')
     renderAllowlistTab()
 
@@ -239,10 +252,11 @@ describe('adding an allowlist entry', () => {
       await screen.findByRole('button', { name: 'Add entry' })
     )
     const dialog = await screen.findByRole('dialog')
+    await userEvent.type(within(dialog).getByLabelText('Note'), 'friend')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add' }))
 
     expect(
-      await within(dialog).findByText('Enter a Discord user ID or username')
+      await within(dialog).findByText('Enter a Discord user ID')
     ).toBeInTheDocument()
     expect(post).not.toHaveBeenCalled()
   })
@@ -268,11 +282,13 @@ describe('adding an allowlist entry', () => {
   })
 
   test('a valid entry is sent trimmed and the allowlist refreshes to show it', async () => {
+    // An applicant who signed in once, so the server knows the name.
     const added: AllowlistEntry = {
       ...prefilled,
       id: 10,
       discord_id: '423456789012345678',
       discord_username: 'umi',
+      display_name: 'Umi',
       note: 'met at the event',
     }
     const post = vi.spyOn(api, 'post').mockImplementation(async (url) => {
@@ -291,10 +307,6 @@ describe('adding an allowlist entry', () => {
       ' 423456789012345678 '
     )
     await userEvent.type(
-      within(dialog).getByLabelText('Discord username'),
-      'umi'
-    )
-    await userEvent.type(
       within(dialog).getByLabelText('Note'),
       'met at the event'
     )
@@ -303,11 +315,10 @@ describe('adding an allowlist entry', () => {
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith('/api/wt/allowlist', {
         discord_id: '423456789012345678',
-        discord_username: 'umi',
         note: 'met at the event',
       })
     )
-    expect(await screen.findByText('umi')).toBeInTheDocument()
+    expect(await screen.findByText('Umi')).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
 })
