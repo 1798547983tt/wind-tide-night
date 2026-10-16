@@ -1,6 +1,6 @@
 <div align="center">
 
-![new-api](/web/public/logo.png)
+![new-api](https://raw.githubusercontent.com/QuantumNous/new-api/main/web/public/logo.png)
 
 # New API
 

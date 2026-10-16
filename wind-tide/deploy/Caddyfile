@@ -1,0 +1,43 @@
+# wind-tide: Caddy in front of 风与潮之夜. SITE_ADDRESS comes from .env:
+# https://<server IP> while the site has no domain, then https://<domain>.
+{$SITE_ADDRESS} {
+	# Let's Encrypt issues IP address certificates only under its six-day
+	# "shortlived" profile; Caddy renews them by itself. Once the site has a
+	# domain this block can go (wind-tide/DEPLOY.md, "买了域名之后").
+	tls {
+		issuer acme {
+			profile shortlived
+		}
+	}
+
+	encode zstd gzip
+
+	header {
+		# The site is invite-only; keep it out of search engines.
+		X-Robots-Tag "noindex, nofollow"
+		-Server
+		# Other sites may not show the console in a frame (clickjacking).
+		Content-Security-Policy "frame-ancestors 'self'"
+		X-Frame-Options SAMEORIGIN
+		# Once the site has a domain and HTTPS works there, uncomment this
+		# line (wind-tide/DEPLOY.md §7). Browsers then keep to HTTPS for a
+		# year, so leave it off while plain HTTP may still be needed.
+		# Strict-Transport-Security "max-age=31536000"
+	}
+
+	# Artwork lives on the server, never in the image (docs/adr/0003). File
+	# names are not content-hashed, so images are cached for a day and the
+	# manifest that lists them is always revalidated.
+	handle_path /art/* {
+		root * /srv/art
+		@manifest path /manifest.json
+		header @manifest Cache-Control "no-cache"
+		@images not path /manifest.json
+		header @images Cache-Control "public, max-age=86400"
+		file_server
+	}
+
+	handle {
+		reverse_proxy site:3000
+	}
+}

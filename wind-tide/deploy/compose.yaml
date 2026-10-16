@@ -1,0 +1,79 @@
+# wind-tide: the production stack of 风与潮之夜, the site behind Caddy.
+# This folder is copied to /opt/wind-tide on the server; the secrets go in
+# .env next to it (start from .env.example), which never enters the repository.
+# Setup, updates, backups and recovery: wind-tide/DEPLOY.md.
+name: wind-tide
+
+services:
+  site:
+    image: ghcr.io/1798547983tt/wind-tide-night:latest
+    restart: unless-stopped
+    command: --log-dir /data/logs
+    environment:
+      TZ: Asia/Shanghai
+      NODE_NAME: wind-tide-1
+      WT_OWNER_DISCORD_ID: ${WT_OWNER_DISCORD_ID:?set WT_OWNER_DISCORD_ID in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      CRYPTO_SECRET: ${CRYPTO_SECRET:?set CRYPTO_SECRET in .env}
+      # Both are required, so a missing line cannot quietly start the site
+      # with insecure cookies behind HTTPS. The temporary plain-HTTP fallback
+      # sets them to false and an empty value (wind-tide/DEPLOY.md §8).
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:?set SESSION_COOKIE_SECURE in .env}
+      SESSION_COOKIE_TRUSTED_URL: ${SESSION_COOKIE_TRUSTED_URL?set SESSION_COOKIE_TRUSTED_URL in .env}
+      # The address emergency-login links point at. It comes from deployment
+      # config, never from the ServerAddress setting the console can change.
+      WT_SITE_URL: ${SITE_ADDRESS:?set SITE_ADDRESS in .env}
+      WT_AVATAR_DIR: /data/wt-avatars
+      # Caddy is the only proxy in front of the site; trust its network only.
+      TRUSTED_PROXIES: 10.255.250.0/24
+      ERROR_LOG_ENABLED: 'true'
+      BATCH_UPDATE_ENABLED: 'true'
+    volumes:
+      - ./data:/data
+    networks:
+      - edge
+    healthcheck:
+      test: ['CMD-SHELL', "wget -q -O - http://localhost:3000/api/status | grep -q '\"success\":true'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  caddy:
+    image: caddy:2.11
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./art:/srv/art:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - edge
+    depends_on:
+      - site
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+networks:
+  edge:
+    ipam:
+      config:
+        # Inside the address pool the server's Docker is set to use.
+        - subnet: 10.255.250.0/24
+
+volumes:
+  caddy-data:
+  caddy-config:

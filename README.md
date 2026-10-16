@@ -1,6 +1,11 @@
+> [!NOTE]
+> **风与潮之夜 · Night of Wind & Tide** — the `wind-tide` branch of this repository is a modified version of [new-api](https://github.com/QuantumNous/new-api), changed in 2026: an anime-style interface, Discord-only sign-in with an allowlist, a daily check-in, leaderboards and an owner/member view switch. The decisions behind the changes are in [`wind-tide/`](wind-tide/) and [`docs/adr/`](docs/adr/). It remains licensed under the [AGPL-3.0](LICENSE), with the notices in [NOTICE](NOTICE).
+>
+> 本仓库的 `wind-tide` 分支是 new-api 的修改版，修改于 2026 年：二次元风格界面、只用 Discord 的白名单登录、每日签到、排行榜，以及站长视图与成员视图切换。改动的来由见 `wind-tide/` 和 `docs/adr/`。仍按 AGPL-3.0 授权，并保留 NOTICE 中的声明。
+
 <div align="center">
 
-![new-api](/web/public/logo.png)
+![new-api](https://raw.githubusercontent.com/QuantumNous/new-api/main/web/public/logo.png)
 
 # New API
 
