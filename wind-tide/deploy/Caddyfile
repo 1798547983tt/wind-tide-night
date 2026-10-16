@@ -1,6 +1,5 @@
 # wind-tide: Caddy in front of 风与潮之夜. SITE_ADDRESS and SITE_HOST come
-# from .env: https://<server IP> and <server IP> while the site has no domain,
-# then https://<domain> and <domain>.
+# from .env: https://<domain> and <domain>.
 {
 	# Browsers name no site (SNI) when they open an IP address, and inside
 	# Docker the connection's own address is the container's, so without a
@@ -9,14 +8,14 @@
 }
 
 {$SITE_ADDRESS} {
-	# Let's Encrypt issues IP address certificates only under its six-day
-	# "shortlived" profile; Caddy renews them by itself. Once the site has a
-	# domain this block can go (wind-tide/DEPLOY.md, "买了域名之后").
-	tls {
-		issuer acme {
-			profile shortlived
-		}
-	}
+	# Without a domain, on the server's IP address, the site needs this block
+	# here (wind-tide/DEPLOY.md §7): Let's Encrypt issues IP address
+	# certificates only under its six-day "shortlived" profile.
+	#   tls {
+	#   	issuer acme {
+	#   		profile shortlived
+	#   	}
+	#   }
 
 	encode zstd gzip
 
@@ -27,10 +26,9 @@
 		# Other sites may not show the console in a frame (clickjacking).
 		Content-Security-Policy "frame-ancestors 'self'"
 		X-Frame-Options SAMEORIGIN
-		# Once the site has a domain and HTTPS works there, uncomment this
-		# line (wind-tide/DEPLOY.md §7). Browsers then keep to HTTPS for a
-		# year, so leave it off while plain HTTP may still be needed.
-		# Strict-Transport-Security "max-age=31536000"
+		# Browsers keep to HTTPS on this domain for a year (they ignore it on
+		# an IP address), so plain HTTP never works there again for them.
+		Strict-Transport-Security "max-age=31536000"
 	}
 
 	# Artwork lives on the server, never in the image (docs/adr/0003). File
