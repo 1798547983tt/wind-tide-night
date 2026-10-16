@@ -1,5 +1,13 @@
-# wind-tide: Caddy in front of 风与潮之夜. SITE_ADDRESS comes from .env:
-# https://<server IP> while the site has no domain, then https://<domain>.
+# wind-tide: Caddy in front of 风与潮之夜. SITE_ADDRESS and SITE_HOST come
+# from .env: https://<server IP> and <server IP> while the site has no domain,
+# then https://<domain> and <domain>.
+{
+	# Browsers name no site (SNI) when they open an IP address, and inside
+	# Docker the connection's own address is the container's, so without a
+	# default Caddy finds no certificate for them and the handshake fails.
+	default_sni {$SITE_HOST}
+}
+
 {$SITE_ADDRESS} {
 	# Let's Encrypt issues IP address certificates only under its six-day
 	# "shortlived" profile; Caddy renews them by itself. Once the site has a

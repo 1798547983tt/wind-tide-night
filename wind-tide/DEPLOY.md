@@ -52,6 +52,7 @@ EOF
    ```
 
    - `SITE_ADDRESS` 和 `SESSION_COOKIE_TRUSTED_URL` 都填 `https://<服务器IP>`。
+   - `SITE_HOST` 填 `<服务器IP>`，不带 `https://`。浏览器打开 IP 网址时不会说明自己要访问哪个站点，Caddy 靠这一项决定出示哪张证书。
    - `WT_OWNER_DISCORD_ID` 填站长的 Discord 用户 ID。
    - `CRYPTO_SECRET` 定下后不要再改，否则加密存储的数据会解不开。
 
@@ -151,7 +152,7 @@ docker compose start site
 ## 7. 买了域名之后
 
 1. 域名解析：添加 A 记录，指向 `<服务器IP>`，等解析生效（`ping <域名>` 能看到这个 IP）。
-2. 改 `.env`：`SITE_ADDRESS` 和 `SESSION_COOKIE_TRUSTED_URL` 都改成 `https://<域名>`。
+2. 改 `.env`：`SITE_ADDRESS` 和 `SESSION_COOKIE_TRUSTED_URL` 都改成 `https://<域名>`，`SITE_HOST` 改成 `<域名>`。
 3. `Caddyfile` 里写着 `profile shortlived` 的 `tls { ... }` 整块可以删掉（那是给 IP 证书用的）。
 4. 后台 → 系统设置里的「服务器地址」改成 `https://<域名>`。
 5. Discord 开发者后台添加回调 `https://<域名>/oauth/discord`。
@@ -161,6 +162,7 @@ docker compose start site
 ## 8. 常见问题
 
 - **HTTPS 证书申请不下来**：先确认阿里云防火墙放行了 80 和 443，再看 `docker compose logs caddy`。实在不行先跑 HTTP：`.env` 里 `SITE_ADDRESS=http://<服务器IP>`、`SESSION_COOKIE_SECURE=false`、`SESSION_COOKIE_TRUSTED_URL=` 留空（这一行要保留，只是等号后面不写），`ServerAddress` 也改成 `http://...`，然后 `docker compose up -d`。HTTP 下登录信息是明文传输，只适合临时排查。**HTTPS 修好后，这三处要一起改回去**：`SITE_ADDRESS` 和 `SESSION_COOKIE_TRUSTED_URL` 填回 `https://...`，`SESSION_COOKIE_SECURE=true`。只改回 `SITE_ADDRESS` 的话，站点会在 HTTPS 下继续用不安全的 Cookie 设置，而且不会报错提醒。
+- **证书申请成功了，浏览器却打不开（提示连接不安全或无法建立安全连接）**：检查 `.env` 里 `SITE_HOST` 是否就是 `SITE_ADDRESS` 去掉 `https://` 后的那部分。两者不一致时，用 IP 访问的浏览器拿不到证书。改好后执行 `docker compose up -d`。
 - **site 一直不是 healthy**：`docker compose logs --tail 100 site` 看报错。常见原因是 `.env` 少填了某一项，compose 启动时会直接提示缺哪个变量。
 - **插画不显示**：确认 `/opt/wind-tide/art/manifest.json` 存在，浏览器访问 `<站点地址>/art/manifest.json` 能打开。
 - **磁盘快满**：`docker system df` 看占用，`docker image prune -f` 清旧镜像。

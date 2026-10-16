@@ -52,6 +52,7 @@ services:
       - '443:443/udp'
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env}
+      SITE_HOST: ${SITE_HOST:?set SITE_HOST in .env}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./art:/srv/art:ro
