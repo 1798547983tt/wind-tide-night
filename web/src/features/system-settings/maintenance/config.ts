@@ -74,14 +74,14 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
     personal: true,
     security: true,
   },
+  // wind-tide: no redemption codes or subscription plans to show or hide
+  // (wind-tide/DESIGN.md §6).
   admin: {
     enabled: true,
     channel: true,
     models: true,
-    redemption: true,
     user: true,
     setting: true,
-    subscription: true,
   },
 }
 

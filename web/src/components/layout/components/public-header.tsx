@@ -27,7 +27,6 @@ import { ProfileDropdown } from '@/components/profile-dropdown'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { SystemUpdateAction } from '@/features/system-update/system-update-action'
 import { useNotifications } from '@/hooks/use-notifications'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { useTopNavLinks } from '@/hooks/use-top-nav-links'
@@ -66,7 +65,8 @@ export function PublicHeader(props: PublicHeaderProps) {
   const {
     navLinks = defaultTopNavLinks,
     showThemeSwitch = true,
-    showLanguageSwitcher = true,
+    // wind-tide: Simplified Chinese only, so the switcher is off by default.
+    showLanguageSwitcher = false,
     logo: customLogo,
     siteName: customSiteName,
     homeUrl = '/',
@@ -234,7 +234,8 @@ export function PublicHeader(props: PublicHeaderProps) {
                   )}
                 </span>
               </Link>
-              <SystemUpdateAction presentation='version' />
+              {/* wind-tide: no upstream update check; the fork ships its own
+                  image (docs/adr/0002, wind-tide/DEPLOY.md). */}
             </div>
 
             {/* Desktop nav */}

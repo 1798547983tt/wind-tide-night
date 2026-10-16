@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import z from 'zod'
 
-import { Rankings } from '@/features/rankings'
+import { RankingsPage } from '@/features/wind-tide/components/leaderboard/rankings-page'
 import { getModuleAccessForGuard } from '@/lib/nav-modules'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -28,6 +28,9 @@ const rankingsSearchSchema = z.object({
     .enum(['today', 'week', 'month', 'year'])
     .optional()
     .catch(undefined),
+  // wind-tide: the members' boards beside the model board (DESIGN.md §5).
+  board: z.enum(['calls', 'balance', 'models']).optional().catch(undefined),
+  range: z.enum(['today', 'week', 'all']).optional().catch(undefined),
 })
 
 export const Route = createFileRoute('/rankings/')({
@@ -50,5 +53,5 @@ export const Route = createFileRoute('/rankings/')({
       }
     }
   },
-  component: Rankings,
+  component: RankingsPage,
 })

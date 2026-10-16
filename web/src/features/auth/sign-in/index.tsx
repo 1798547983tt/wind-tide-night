@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { Link, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
+import { DiscordSignIn } from '@/features/wind-tide/components/auth-stage/discord-sign-in'
 import { useStatus } from '@/hooks/use-status'
 
 import { AuthLayout } from '../auth-layout'
@@ -29,6 +30,16 @@ export function SignIn() {
   const { t } = useTranslation()
   const { redirect } = useSearch({ from: '/(auth)/sign-in' })
   const { status } = useStatus()
+
+  // wind-tide: a Discord-only site has a single way in, which also asks for
+  // entry, so it gets its own page instead of the general sign-in form.
+  if (status?.wt_discord_only) {
+    return (
+      <AuthLayout>
+        <DiscordSignIn redirectTo={redirect} />
+      </AuthLayout>
+    )
+  }
 
   return (
     <AuthLayout>

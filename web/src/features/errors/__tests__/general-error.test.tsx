@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -27,6 +28,8 @@ import {
 } from '@tanstack/react-router'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+
+import { artManifestQueryOptions } from '@/features/wind-tide/api'
 
 import { GeneralError } from '../general-error'
 
@@ -66,10 +69,19 @@ function createTestRouter(error: Error | { response: { status: number } }) {
     path: '/wallet',
     component: lazyRouteComponent(() => Promise.reject(error)),
   })
+  // wind-tide: the error page asks the query client for the mascot's art,
+  // here none.
+  const client = new QueryClient()
+  client.setQueryData(artManifestQueryOptions.queryKey, {})
   return createRouter({
     routeTree: root.addChildren([home, broken]),
     history: createMemoryHistory({ initialEntries: ['/'] }),
     defaultPreload: 'intent',
+    Wrap: (props) => (
+      <QueryClientProvider client={client}>
+        {props.children}
+      </QueryClientProvider>
+    ),
   })
 }
 

@@ -21,6 +21,7 @@ import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { ErrorMascot } from '@/features/wind-tide/components/mascot/error-mascot'
 import { cn } from '@/lib/utils'
 
 const FEEDBACK_URL = 'https://github.com/QuantumNous/new-api/issues'
@@ -80,6 +81,16 @@ export function GeneralError({
   return (
     <div className={cn('h-svh w-full', className)}>
       <div className='m-auto flex h-full w-full flex-col items-center justify-center gap-2'>
+        {/* wind-tide: the mascot on the error pages (DESIGN.md §8). */}
+        {!minimal && (
+          <ErrorMascot
+            line={
+              isRateLimited
+                ? t('Too fast! Let the wind catch its breath~')
+                : t('Something tripped over a wave…')
+            }
+          />
+        )}
         {!minimal && status !== undefined && (
           <h1 className='text-[7rem] leading-tight font-bold'>{status}</h1>
         )}

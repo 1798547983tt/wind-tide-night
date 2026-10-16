@@ -37,6 +37,7 @@ export function ThemeQuickSwitcher() {
         >
           {t('Theme')}
         </span>
+        {/* wind-tide: the themes go by their names (DESIGN.md §8). */}
         <div
           role='radiogroup'
           aria-labelledby='theme-switcher-label'
@@ -46,7 +47,7 @@ export function ThemeQuickSwitcher() {
             variant='ghost'
             size='icon'
             role='radio'
-            aria-label={t('System')}
+            aria-label={t('Day and night (Beijing time)')}
             aria-checked={theme === 'system'}
             onClick={() => setTheme('system')}
             className={cn(
@@ -73,7 +74,7 @@ export function ThemeQuickSwitcher() {
             variant='ghost'
             size='icon'
             role='radio'
-            aria-label={t('Light')}
+            aria-label={t('Wind (day)')}
             aria-checked={theme === 'light'}
             onClick={() => setTheme('light')}
             className={cn(
@@ -100,7 +101,7 @@ export function ThemeQuickSwitcher() {
             variant='ghost'
             size='icon'
             role='radio'
-            aria-label={t('Dark')}
+            aria-label={t('Night of Tide (night)')}
             aria-checked={theme === 'dark'}
             onClick={() => setTheme('dark')}
             className={cn(

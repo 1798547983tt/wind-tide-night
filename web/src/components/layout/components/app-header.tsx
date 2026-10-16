@@ -17,11 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ConfigDrawer } from '@/components/config-drawer'
-import { LanguageSwitcher } from '@/components/language-switcher'
 import { NotificationPopover } from '@/components/notification-popover'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { Search } from '@/components/search'
-import { SystemUpdateAction } from '@/features/system-update/system-update-action'
+import { OwnerViewSwitch } from '@/features/wind-tide/components/owner-view/owner-view-switch'
 import { useNotifications } from '@/hooks/use-notifications'
 import { useTopNavLinks } from '@/hooks/use-top-nav-links'
 
@@ -115,7 +114,8 @@ export function AppHeader({
     <Header>
       <div className='@container/system-brand flex min-w-0 flex-1 items-center gap-1'>
         <SystemBrand variant='inline' />
-        <SystemUpdateAction presentation='version' />
+        {/* wind-tide: no upstream update check; the fork ships its own image
+            (docs/adr/0002, wind-tide/DEPLOY.md). */}
       </div>
 
       {leftContent ? (
@@ -144,7 +144,9 @@ export function AppHeader({
               loading={notifications.loading}
             />
           )}
-          <LanguageSwitcher />
+          {/* wind-tide: Simplified Chinese only, so no language switcher;
+              the owner switches between the admin and members' views. */}
+          <OwnerViewSwitch />
           {showConfigDrawer && <ConfigDrawer />}
           {showProfileDropdown && <ProfileDropdown />}
         </div>

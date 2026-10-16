@@ -229,16 +229,27 @@ function ThemeConfig() {
         aria-label={t('Select theme preference')}
         aria-describedby='theme-description'
       >
+        {/* wind-tide: the themes go by their names (DESIGN.md §8). */}
         {[
-          { value: 'system', label: t('System'), icon: IconThemeSystem },
-          { value: 'light', label: t('Light'), icon: IconThemeLight },
-          { value: 'dark', label: t('Dark'), icon: IconThemeDark },
+          {
+            value: 'system',
+            label: t('Day and night (Beijing time)'),
+            icon: IconThemeSystem,
+          },
+          { value: 'light', label: t('Wind (day)'), icon: IconThemeLight },
+          {
+            value: 'dark',
+            label: t('Night of Tide (night)'),
+            icon: IconThemeDark,
+          },
         ].map((item) => (
           <RadioGroupItem key={item.value} item={item} isTheme />
         ))}
       </Radio>
       <div id='theme-description' className='sr-only'>
-        {t('Choose between system preference, light mode, or dark mode')}
+        {t(
+          'Choose the day theme, the night theme, or switch between them with day and night in Beijing time'
+        )}
       </div>
     </div>
   )

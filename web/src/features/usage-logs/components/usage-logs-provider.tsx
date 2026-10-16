@@ -19,8 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, type ReactNode } from 'react'
 
+import { useViewRole } from '@/hooks/use-view-role'
 import { ROLE } from '@/lib/roles'
-import { useAuthStore } from '@/stores/auth-store'
 
 import type { ChannelAffinityInfo } from '../types'
 
@@ -102,7 +102,8 @@ export function useUsageLogsContext() {
  * mine" is treated exactly like a regular user for that view.
  */
 export function useLogsViewScope() {
-  const role = useAuthStore((state) => state.auth.user?.role ?? ROLE.GUEST)
+  // wind-tide: follows the owner's member view.
+  const role = useViewRole()
   const { viewScope, setViewScope } = useUsageLogsContext()
   const canManageScope = role >= ROLE.ADMIN
   const viewAccess = resolveLogsViewAccess(role, viewScope)

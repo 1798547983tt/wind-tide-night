@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { AuthenticatedLayout } from '@/components/layout'
+import { DailyRewardDialog } from '@/features/wind-tide/components/checkin/daily-reward-dialog'
+import { DeskMascot } from '@/features/wind-tide/components/mascot/desk-mascot'
 import { resolveAuthentication } from '@/lib/auth-session'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -39,5 +41,20 @@ export const Route = createFileRoute('/_authenticated')({
       })
     }
   },
-  component: AuthenticatedLayout,
+  // wind-tide: the console stops rendering the moment the session ends. The
+  // root empties the query cache then, and pages still on screen would fetch
+  // their data again without a session and report it as expired. While it
+  // shows, the day's first visit offers the check-in (wind-tide/DESIGN.md §4)
+  // and the mascot keeps desktops company from the corner (§8).
+  component: function SignedInConsole() {
+    const signedIn = useAuthStore((state) => state.auth.user !== null)
+    if (!signedIn) return null
+    return (
+      <>
+        <AuthenticatedLayout />
+        <DailyRewardDialog />
+        <DeskMascot />
+      </>
+    )
+  },
 })

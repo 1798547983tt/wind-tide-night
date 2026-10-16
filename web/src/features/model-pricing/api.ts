@@ -29,10 +29,10 @@ import type {
   BillingUsageSchema,
   BillingUsageExample,
 } from '@/features/pricing/types'
+import { useViewRole } from '@/hooks/use-view-role'
 import { api } from '@/lib/api'
 import { ROLE } from '@/lib/roles'
 import { createServerError } from '@/lib/server-error-message'
-import { useAuthStore } from '@/stores/auth-store'
 
 import {
   PRICING_KEYS,
@@ -120,7 +120,8 @@ export async function previewModelPricing(request: {
 }
 
 export function useCanEditModelPricing() {
-  return useAuthStore((state) => state.auth.user?.role === ROLE.SUPER_ADMIN)
+  // wind-tide: follows the owner's member view.
+  return useViewRole() === ROLE.SUPER_ADMIN
 }
 
 export async function getModelPricing(

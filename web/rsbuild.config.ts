@@ -64,12 +64,21 @@ export default defineConfig(({ envMode }) => {
     },
     html: {
       template: './index.html',
-      favicon: './public/favicon.ico',
+      // wind-tide: the SVG mark, which follows the browser's dark mode;
+      // index.html adds the ICO fallback and the home-screen icon.
+      favicon: './public/favicon.svg',
     },
     server: {
       host: '0.0.0.0',
       strictPort: false,
       proxy: devProxy,
+      // wind-tide: artwork stays out of the repository (docs/adr/0003). Dev
+      // serves the locally built copy at /art/; production serves it from the
+      // server's art directory, so it is never copied into dist.
+      publicDir: [
+        { name: 'public' },
+        { name: '../wind-tide/.serve', copyOnBuild: false, watch: false },
+      ],
     },
     output: {
       // Production optimizations

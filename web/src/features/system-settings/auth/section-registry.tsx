@@ -18,35 +18,18 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { AuthSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
-import { BasicAuthSection } from './basic-auth-section'
-import { BotProtectionSection } from './bot-protection-section'
-import { CustomOAuthSection } from './custom-oauth/custom-oauth-section'
 import { OAuthSection } from './oauth-section'
-import { PasskeySection } from './passkey-section'
 
+// wind-tide: Discord is the only way to sign in (wind-tide/DESIGN.md §3), so
+// the password, registration, Passkey, bot-check and other provider settings
+// are not offered; links to those sections open the Discord settings.
 const AUTH_SECTIONS = [
   {
-    id: 'basic-auth',
-    titleKey: 'Basic Authentication',
-    build: (settings: AuthSettings) => (
-      <BasicAuthSection
-        defaultValues={{
-          PasswordLoginEnabled: settings.PasswordLoginEnabled,
-          PasswordRegisterEnabled: settings.PasswordRegisterEnabled,
-          EmailVerificationEnabled: settings.EmailVerificationEnabled,
-          RegisterEnabled: settings.RegisterEnabled,
-          EmailDomainRestrictionEnabled: settings.EmailDomainRestrictionEnabled,
-          EmailAliasRestrictionEnabled: settings.EmailAliasRestrictionEnabled,
-          EmailDomainWhitelist: settings.EmailDomainWhitelist,
-        }}
-      />
-    ),
-  },
-  {
-    id: 'oauth',
-    titleKey: 'OAuth Integrations',
+    id: 'discord',
+    titleKey: 'Discord',
     build: (settings: AuthSettings) => (
       <OAuthSection
+        providers={['discord']}
         serverAddress={settings.ServerAddress}
         defaultValues={{
           GitHubOAuthEnabled: settings.GitHubOAuthEnabled,
@@ -79,56 +62,13 @@ const AUTH_SECTIONS = [
       />
     ),
   },
-  {
-    id: 'passkey',
-    titleKey: 'Passkey Authentication',
-    build: (settings: AuthSettings) => (
-      <PasskeySection
-        defaultValues={{
-          'passkey.enabled': settings['passkey.enabled'],
-          'passkey.rp_display_name': settings['passkey.rp_display_name'],
-          'passkey.rp_id': settings['passkey.rp_id'],
-          'passkey.legacy_rp_ids': settings['passkey.legacy_rp_ids'],
-          'passkey.origins': settings['passkey.origins'],
-          'passkey.allow_insecure_origin':
-            settings['passkey.allow_insecure_origin'],
-          'passkey.user_verification': settings['passkey.user_verification'] as
-            | 'required'
-            | 'preferred'
-            | 'discouraged',
-          'passkey.attachment_preference':
-            settings['passkey.attachment_preference'],
-        }}
-      />
-    ),
-  },
-  {
-    id: 'bot-protection',
-    titleKey: 'Bot Protection',
-    build: (settings: AuthSettings) => (
-      <BotProtectionSection
-        defaultValues={{
-          TurnstileCheckEnabled: settings.TurnstileCheckEnabled,
-          TurnstileSiteKey: settings.TurnstileSiteKey,
-          TurnstileSecretKey: settings.TurnstileSecretKey,
-        }}
-      />
-    ),
-  },
-  {
-    id: 'custom-oauth',
-    titleKey: 'Custom OAuth',
-    build: (settings: AuthSettings) => (
-      <CustomOAuthSection serverAddress={settings.ServerAddress} />
-    ),
-  },
 ] as const
 
 export type AuthSectionId = (typeof AUTH_SECTIONS)[number]['id']
 
 const authRegistry = createSectionRegistry<AuthSectionId, AuthSettings>({
   sections: AUTH_SECTIONS,
-  defaultSection: 'basic-auth',
+  defaultSection: 'discord',
   basePath: '/system-settings/auth',
   urlStyle: 'path',
 })

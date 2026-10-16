@@ -82,11 +82,17 @@ function formatQuotaInputValue(value: QuotaInputValue): string {
 type QuotaSettingsSectionProps = {
   defaultValues: QuotaFormValues
   complianceConfirmed?: boolean
+  /**
+   * wind-tide: false leaves out the invitation rewards and the top-up link,
+   * for a site that takes no payments and has no referrals.
+   */
+  offersPayments?: boolean
 }
 
 export function QuotaSettingsSection({
   defaultValues,
   complianceConfirmed = true,
+  offersPayments = true,
 }: QuotaSettingsSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
@@ -119,7 +125,7 @@ export function QuotaSettingsSection({
     <SettingsSection title={t('Quota Settings')}>
       <FormNavigationGuard when={isDirty} />
 
-      {!complianceConfirmed ? (
+      {offersPayments && !complianceConfirmed ? (
         <Alert variant='destructive'>
           <AlertDescription>
             {t(
@@ -224,60 +230,67 @@ export function QuotaSettingsSection({
               )}
             />
 
-            <FormField
-              control={form.control}
-              name='QuotaForInviter'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('Inviter Reward')}</FormLabel>
-                  <FormControl>
-                    <Input
-                      type='number'
-                      value={field.value ?? ''}
-                      onChange={handleNumberChange(field.onChange)}
-                      name={field.name}
-                      onBlur={field.onBlur}
-                      ref={field.ref}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    {t(
-                      'Quota given to users who invite others ({{formattedQuota}})',
-                      {
-                        formattedQuota: formatQuotaInputValue(field.value),
-                      }
-                    )}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {offersPayments && (
+              <>
+                <FormField
+                  control={form.control}
+                  name='QuotaForInviter'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Inviter Reward')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          type='number'
+                          value={field.value ?? ''}
+                          onChange={handleNumberChange(field.onChange)}
+                          name={field.name}
+                          onBlur={field.onBlur}
+                          ref={field.ref}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Quota given to users who invite others ({{formattedQuota}})',
+                          {
+                            formattedQuota: formatQuotaInputValue(field.value),
+                          }
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            <FormField
-              control={form.control}
-              name='QuotaForInvitee'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('Invitee Reward')}</FormLabel>
-                  <FormControl>
-                    <Input
-                      type='number'
-                      value={field.value ?? ''}
-                      onChange={handleNumberChange(field.onChange)}
-                      name={field.name}
-                      onBlur={field.onBlur}
-                      ref={field.ref}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    {t('Quota given to invited users ({{formattedQuota}})', {
-                      formattedQuota: formatQuotaInputValue(field.value),
-                    })}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                <FormField
+                  control={form.control}
+                  name='QuotaForInvitee'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Invitee Reward')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          type='number'
+                          value={field.value ?? ''}
+                          onChange={handleNumberChange(field.onChange)}
+                          name={field.name}
+                          onBlur={field.onBlur}
+                          ref={field.ref}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Quota given to invited users ({{formattedQuota}})',
+                          {
+                            formattedQuota: formatQuotaInputValue(field.value),
+                          }
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
+            )}
 
             <SettingsFormGridItem span='full'>
               <FormField
@@ -305,25 +318,27 @@ export function QuotaSettingsSection({
               />
             </SettingsFormGridItem>
 
-            <FormField
-              control={form.control}
-              name='TopUpLink'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('Top-Up Link')}</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder={t('https://example.com/topup')}
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    {t('External link for users to purchase quota')}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {offersPayments && (
+              <FormField
+                control={form.control}
+                name='TopUpLink'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Top-Up Link')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder={t('https://example.com/topup')}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('External link for users to purchase quota')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
           </SettingsFormGrid>
         </SettingsForm>
       </Form>

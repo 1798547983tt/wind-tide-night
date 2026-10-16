@@ -34,6 +34,7 @@ import {
 import useDialogState from '@/hooks/use-dialog'
 import { useIsSidebarModuleVisible } from '@/hooks/use-sidebar-config'
 import { useUserDisplay } from '@/hooks/use-user-display'
+import { useViewRole } from '@/hooks/use-view-role'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
@@ -46,7 +47,8 @@ export function ProfileDropdown() {
   const [open, setOpen] = useDialogState()
   const user = useAuthStore((state) => state.auth.user)
   const { displayName, roleLabel } = useUserDisplay(user)
-  const isSuperAdmin = user?.role === ROLE.SUPER_ADMIN
+  // wind-tide: the owner's member view hides the admin entries.
+  const isSuperAdmin = useViewRole() === ROLE.SUPER_ADMIN
   const isWalletVisible = useIsSidebarModuleVisible('/wallet')
   const isSecurityVisible = useIsSidebarModuleVisible('/security')
   const avatarName = user?.username || displayName

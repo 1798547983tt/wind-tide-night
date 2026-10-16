@@ -32,11 +32,11 @@ import type {
   QuotaDataItem,
   DashboardFilters,
 } from '@/features/dashboard/types'
+import { useViewRole } from '@/hooks/use-view-role'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatCompactNumber, formatNumber, formatQuota } from '@/lib/format'
 import { computeTimeRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
-import { useAuthStore } from '@/stores/auth-store'
 
 interface LogStatCardsProps {
   filters?: DashboardFilters
@@ -61,8 +61,8 @@ function formatStatNumber(value: number, locale: Intl.LocalesArgument) {
 export function LogStatCards(props: LogStatCardsProps) {
   const { i18n } = useTranslation()
   const statCardsConfig = useModelStatCardsConfig()
-  const user = useAuthStore((state) => state.auth.user)
-  const isAdmin = !!(user?.role && user.role >= 10)
+  // wind-tide: follows the owner's member view.
+  const isAdmin = useViewRole() >= 10
   const [stats, setStats] = useState<{
     totalQuota: number
     totalCount: number

@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Check, Moon, Sun } from 'lucide-react'
-import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -34,13 +33,9 @@ export function ThemeSwitch() {
   const { t } = useTranslation()
   const { theme, setTheme } = useTheme()
 
-  /* Update theme-color meta tag
-   * when theme is updated */
-  useEffect(() => {
-    const themeColor = theme === 'dark' ? '#020817' : '#fff'
-    const metaThemeColor = document.querySelector("meta[name='theme-color']")
-    if (metaThemeColor) metaThemeColor.setAttribute('content', themeColor)
-  }, [theme])
+  // wind-tide: ThemeProvider sets the theme-color meta tag from the resolved
+  // day or night theme, which "system" no longer reads from the device. The
+  // themes go by their names, Wind and Night of Tide (DESIGN.md §8).
 
   return (
     <DropdownMenu modal={false}>
@@ -53,21 +48,21 @@ export function ThemeSwitch() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align='end'>
         <DropdownMenuItem onClick={() => setTheme('light')}>
-          {t('Light')}{' '}
+          {t('Wind (day)')}
           <Check
             size={14}
             className={cn('ms-auto', theme !== 'light' && 'hidden')}
           />
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme('dark')}>
-          {t('Dark')}
+          {t('Night of Tide (night)')}
           <Check
             size={14}
             className={cn('ms-auto', theme !== 'dark' && 'hidden')}
           />
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme('system')}>
-          {t('System')}
+          {t('Day and night (Beijing time)')}
           <Check
             size={14}
             className={cn('ms-auto', theme !== 'system' && 'hidden')}

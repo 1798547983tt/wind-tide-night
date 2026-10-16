@@ -28,14 +28,25 @@ function hashString(value: string): number {
   return hash
 }
 
-export function getUserAvatarStyle(name: string): UserAvatarStyle {
-  const hash = hashString(name)
-  const hue = hash % 360
-  const saturation = 54 + (hash % 8)
-  const lightness = 52 + ((hash >> 4) % 8)
+// wind-tide: initials sit on the site's own muted traditional colours rather
+// than any hue of the wheel, each dark enough for white initials to pass WCAG
+// AA (4.5:1).
+const AVATAR_COLORS = [
+  '#b84d63', // rose
+  '#2c7a80', // tide teal
+  '#4b5c96', // dusk indigo
+  '#80609f', // wisteria
+  '#a2671c', // amber
+  '#a8343f', // crimson
+  '#3c7254', // pine
+  '#36689c', // sea blue
+  '#8a4569', // plum
+  '#9a5a33', // bronze
+] as const
 
+export function getUserAvatarStyle(name: string): UserAvatarStyle {
   return {
-    backgroundColor: `hsl(${hue} ${saturation}% ${lightness}%)`,
+    backgroundColor: AVATAR_COLORS[hashString(name) % AVATAR_COLORS.length],
     color: 'white',
   }
 }

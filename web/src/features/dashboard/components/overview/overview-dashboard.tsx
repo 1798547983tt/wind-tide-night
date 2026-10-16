@@ -51,6 +51,7 @@ import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { useViewRole } from '@/hooks/use-view-role'
 import { getUserModels } from '@/lib/api'
 import { handleServerError } from '@/lib/handle-server-error'
 import { MOTION_TRANSITION } from '@/lib/motion'
@@ -479,7 +480,8 @@ export function OverviewDashboard() {
   const requestCount = Number(user?.request_count ?? 0)
   const remainQuota = Number(user?.quota ?? 0)
   const usedQuota = Number(user?.used_quota ?? 0)
-  const isAdmin = Boolean(user?.role && user.role >= ROLE.ADMIN)
+  // wind-tide: follows the owner's member view.
+  const isAdmin = useViewRole() >= ROLE.ADMIN
 
   const apiKeysQuery = useQuery({
     queryKey: ['dashboard', 'overview', 'api-keys'],

@@ -84,6 +84,7 @@ import type {
   FlowOverflowMode,
   FlowRole,
 } from '@/features/dashboard/types'
+import { useViewRole } from '@/hooks/use-view-role'
 import { formatQuota } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
 import { requireServerSuccess } from '@/lib/server-error-message'
@@ -91,7 +92,6 @@ import { computeTimeRange } from '@/lib/time'
 import { useChartTheme } from '@/lib/use-chart-theme'
 import { cn } from '@/lib/utils'
 import { VCHART_OPTION } from '@/lib/vchart'
-import { useAuthStore } from '@/stores/auth-store'
 
 import { FlowNodeFilterControl } from './flow-node-filter'
 
@@ -257,9 +257,10 @@ export function FlowCharts(props: FlowChartsProps) {
   const { t } = useTranslation()
   const { resolvedTheme, themeReady } = useChartTheme()
   const chartInstanceRef = useRef<IVChart | null>(null)
-  const user = useAuthStore((state) => state.auth.user)
-  const isRoot = Boolean(user?.role && user.role >= ROLE.SUPER_ADMIN)
-  const isAdmin = Boolean(user?.role && user.role >= ROLE.ADMIN)
+  // wind-tide: follows the owner's member view.
+  const viewRole = useViewRole()
+  const isRoot = viewRole >= ROLE.SUPER_ADMIN
+  const isAdmin = viewRole >= ROLE.ADMIN
   let flowRole: FlowRole = 'user'
   if (isRoot) {
     flowRole = 'root'

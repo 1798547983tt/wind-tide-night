@@ -69,7 +69,10 @@ const defaults: ComponentProps<typeof OAuthSection>['defaultValues'] = {
 
 let testI18n: i18n
 
-function Fixture(props: { values?: Partial<typeof defaults> }) {
+function Fixture(props: {
+  values?: Partial<typeof defaults>
+  providers?: ComponentProps<typeof OAuthSection>['providers']
+}) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const [client] = useState(
     () => new QueryClient({ defaultOptions: { mutations: { retry: false } } })
@@ -83,6 +86,7 @@ function Fixture(props: { values?: Partial<typeof defaults> }) {
           <OAuthSection
             defaultValues={{ ...defaults, ...props.values }}
             serverAddress='https://gateway.example.com'
+            providers={props.providers}
           />
         </SettingsPageProvider>
       </QueryClientProvider>
@@ -90,9 +94,12 @@ function Fixture(props: { values?: Partial<typeof defaults> }) {
   )
 }
 
-async function renderSettings(values?: Partial<typeof defaults>) {
+async function renderSettings(
+  values?: Partial<typeof defaults>,
+  providers?: ComponentProps<typeof OAuthSection>['providers']
+) {
   const route = createRootRoute({
-    component: () => <Fixture values={values} />,
+    component: () => <Fixture values={values} providers={providers} />,
   })
   const router = createRouter({
     routeTree: route,
@@ -335,5 +342,30 @@ describe('OAuth settings saves', () => {
         value: 'https://provider.example.com/discovery',
       })
     )
+  })
+})
+
+describe('OAuth settings for a single provider', () => {
+  it('shows the Discord settings without provider tabs and saves them', async () => {
+    const user = userEvent.setup()
+    await renderSettings(undefined, ['discord'])
+
+    expect(screen.queryByRole('tablist')).toBeNull()
+    expect(
+      screen.getByRole('switch', { name: 'Enable Discord OAuth' })
+    ).toBeInTheDocument()
+    await user.type(
+      screen.getByRole('textbox', { name: 'Client ID' }),
+      'discord-client'
+    )
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }))
+
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith('/api/option/', {
+        key: 'discord.client_id',
+        value: 'discord-client',
+      })
+    )
+    expect(api.put).toHaveBeenCalledTimes(1)
   })
 })

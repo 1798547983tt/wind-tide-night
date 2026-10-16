@@ -17,20 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute } from '@tanstack/react-router'
-import { z } from 'zod'
 
-import { Wallet } from '@/features/wallet'
+import { WalletPage } from '@/features/wind-tide/components/wallet/wallet-page'
 
-const walletSearchSchema = z.object({
-  show_history: z.boolean().optional(),
-})
-
+// wind-tide: the free relay's wallet has no top-up or billing history
+// (wind-tide/DESIGN.md §6).
 export const Route = createFileRoute('/_authenticated/wallet/')({
-  component: RouteComponent,
-  validateSearch: walletSearchSchema,
+  component: WalletPage,
 })
-
-function RouteComponent() {
-  const { show_history } = Route.useSearch()
-  return <Wallet initialShowHistory={show_history} />
-}

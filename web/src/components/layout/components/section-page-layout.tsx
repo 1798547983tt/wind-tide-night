@@ -105,7 +105,10 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
           </div>
         </div>
 
+        {/* wind-tide: the data-slot names let the desk mascot's corner keep
+            clear of the content and footer (styles/wind-tide.css). */}
         <div
+          data-slot='page-content'
           className={
             props.fixedContent
               ? 'min-h-0 flex-1 overflow-hidden px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'
@@ -117,6 +120,7 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
 
         <div
           ref={setFooterContainer}
+          data-slot='page-footer'
           className='bg-background shrink-0 border-t px-3 py-2.5 empty:hidden sm:px-4 sm:py-3'
         />
       </Main>

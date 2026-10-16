@@ -23,10 +23,10 @@ import { useTranslation } from 'react-i18next'
 import { resolveSidebarView } from '@/components/layout/lib/sidebar-view-registry'
 import type { NavGroup, ResolvedSidebarView } from '@/components/layout/types'
 import { ROLE } from '@/lib/roles'
-import { useAuthStore } from '@/stores/auth-store'
 
 import { useSidebarConfig } from './use-sidebar-config'
 import { useSidebarData } from './use-sidebar-data'
+import { useViewRole } from './use-view-role'
 
 /** Sentinel key used for the root navigation in animation `key=` props */
 const ROOT_VIEW_KEY = '__root'
@@ -47,12 +47,13 @@ const ROOT_VIEW_KEY = '__root'
 export function useSidebarView(): ResolvedSidebarView {
   const { t } = useTranslation()
   const pathname = useLocation({ select: (l) => l.pathname })
-  const userRole = useAuthStore((s) => s.auth.user?.role)
+  // wind-tide: the owner's member view hides the admin groups too.
+  const userRole = useViewRole()
   const rootSidebarData = useSidebarData()
   const configFilteredRoot = useSidebarConfig(rootSidebarData.navGroups)
 
   const rootNavGroups = useMemo<NavGroup[]>(() => {
-    const role = userRole ?? ROLE.GUEST
+    const role = userRole
     const isAdmin = role >= ROLE.ADMIN
     return configFilteredRoot
       .filter((group) => (group.id === 'admin' ? isAdmin : true))

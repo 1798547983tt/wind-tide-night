@@ -27,6 +27,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { useViewRole } from '@/hooks/use-view-role'
 import { handleServerError } from '@/lib/handle-server-error'
 import { ROLE } from '@/lib/roles'
 
@@ -53,7 +54,8 @@ interface NotificationTabProps {
 
 export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
   const { t } = useTranslation()
-  const isAdmin = (profile?.role ?? 0) >= ROLE.ADMIN
+  // wind-tide: follows the owner's member view.
+  const isAdmin = useViewRole() >= ROLE.ADMIN
   const [loading, setLoading] = useState(false)
   const [settings, setSettings] = useState(() => normalizeUserSettings())
 

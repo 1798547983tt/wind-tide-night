@@ -33,7 +33,9 @@ import { api } from '@/lib/api'
 import { SettingsPageProvider } from '../../components/settings-page-context'
 import { QuotaSettingsSection } from '../quota-settings-section'
 
-function Fixture() {
+type FixtureProps = { offersPayments?: boolean; complianceConfirmed?: boolean }
+
+function Fixture(props: FixtureProps) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null)
   return (
     <>
@@ -51,18 +53,20 @@ function Fixture() {
               pre_consume_multiplier: 1,
             },
           }}
+          offersPayments={props.offersPayments}
+          complianceConfirmed={props.complianceConfirmed}
         />
       </SettingsPageProvider>
     </>
   )
 }
 
-async function renderSettings() {
+async function renderSettings(props: FixtureProps = {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   const router = createRouter({
-    routeTree: createRootRoute({ component: Fixture }),
+    routeTree: createRootRoute({ component: () => <Fixture {...props} /> }),
     history: createMemoryHistory({ initialEntries: ['/'] }),
   })
   render(
@@ -145,3 +149,20 @@ test.each(['', '-1'])(
     expect(api.put).not.toHaveBeenCalled()
   }
 )
+
+// wind-tide: the fork's billing settings show no referral or payment fields.
+test('a site without payments leaves out invitation rewards and the top-up link', async () => {
+  await renderSettings({ offersPayments: false, complianceConfirmed: false })
+
+  expect(
+    screen.getByRole('spinbutton', { name: 'New User Quota' })
+  ).toBeInTheDocument()
+  expect(
+    screen.queryByRole('spinbutton', { name: 'Inviter Reward' })
+  ).toBeNull()
+  expect(
+    screen.queryByRole('spinbutton', { name: 'Invitee Reward' })
+  ).toBeNull()
+  expect(screen.queryByRole('textbox', { name: 'Top-Up Link' })).toBeNull()
+  expect(screen.queryByRole('alert')).toBeNull()
+})

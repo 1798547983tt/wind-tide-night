@@ -28,6 +28,9 @@ For commercial licensing, please contact support@quantumnous.com
 @import '@fontsource-variable/lora';
 
 @import './theme.css';
+/* wind-tide: brand palette and motion layer; must stay between theme.css and
+ * theme-presets.css so it replaces the default palette but not the presets. */
+@import './wind-tide.css';
 @import './theme-presets.css';
 
 @layer base {

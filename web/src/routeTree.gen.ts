@@ -14,7 +14,9 @@ import { Route as authRouteRouteImport } from './routes/(auth)/route'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as PrivacyPolicyRouteImport } from './routes/privacy-policy'
 import { Route as UserAgreementRouteImport } from './routes/user-agreement'
+import { Route as authEmergencyLoginRouteImport } from './routes/(auth)/emergency-login'
 import { Route as authForgotPasswordRouteImport } from './routes/(auth)/forgot-password'
+import { Route as authGateRouteImport } from './routes/(auth)/gate'
 import { Route as authOauthRouteImport } from './routes/(auth)/oauth'
 import { Route as authOtpRouteImport } from './routes/(auth)/otp'
 import { Route as authRegisterRouteImport } from './routes/(auth)/register'
@@ -34,6 +36,7 @@ import { Route as PricingIndexRouteImport } from './routes/pricing/index'
 import { Route as RankingsIndexRouteImport } from './routes/rankings/index'
 import { Route as SetupIndexRouteImport } from './routes/setup/index'
 import { Route as authUserResetRouteImport } from './routes/(auth)/user/reset'
+import { Route as AuthenticatedAllowlistIndexRouteImport } from './routes/_authenticated/allowlist/index'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authenticated/chat/$chatId'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
@@ -96,9 +99,19 @@ const UserAgreementRoute = UserAgreementRouteImport.update({
   path: '/user-agreement',
   getParentRoute: () => rootRouteImport,
 } as any)
+const authEmergencyLoginRoute = authEmergencyLoginRouteImport.update({
+  id: '/emergency-login',
+  path: '/emergency-login',
+  getParentRoute: () => authRouteRoute,
+} as any)
 const authForgotPasswordRoute = authForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
+  getParentRoute: () => authRouteRoute,
+} as any)
+const authGateRoute = authGateRouteImport.update({
+  id: '/gate',
+  path: '/gate',
   getParentRoute: () => authRouteRoute,
 } as any)
 const authOauthRoute = authOauthRouteImport.update({
@@ -197,6 +210,12 @@ const authUserResetRoute = authUserResetRouteImport.update({
   path: '/user/reset',
   getParentRoute: () => authRouteRoute,
 } as any)
+const AuthenticatedAllowlistIndexRoute =
+  AuthenticatedAllowlistIndexRouteImport.update({
+    id: '/allowlist/',
+    path: '/allowlist/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedChannelsIndexRoute =
   AuthenticatedChannelsIndexRouteImport.update({
     id: '/channels/',
@@ -427,7 +446,9 @@ export interface FileRoutesByFullPath {
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/user-agreement': typeof UserAgreementRoute
   '/system-settings': typeof AuthenticatedSystemSettingsRouteRouteWithChildren
+  '/emergency-login': typeof authEmergencyLoginRoute
   '/forgot-password': typeof authForgotPasswordRoute
+  '/gate': typeof authGateRoute
   '/oauth': typeof authOauthRoute
   '/otp': typeof authOtpRoute
   '/register': typeof authRegisterRoute
@@ -452,6 +473,7 @@ export interface FileRoutesByFullPath {
   '/models/$section': typeof AuthenticatedModelsSectionRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/usage-logs/audit': typeof AuthenticatedUsageLogsAuditRoute
+  '/allowlist/': typeof AuthenticatedAllowlistIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
@@ -489,7 +511,9 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/user-agreement': typeof UserAgreementRoute
+  '/emergency-login': typeof authEmergencyLoginRoute
   '/forgot-password': typeof authForgotPasswordRoute
+  '/gate': typeof authGateRoute
   '/oauth': typeof authOauthRoute
   '/otp': typeof authOtpRoute
   '/register': typeof authRegisterRoute
@@ -514,6 +538,7 @@ export interface FileRoutesByTo {
   '/models/$section': typeof AuthenticatedModelsSectionRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/usage-logs/audit': typeof AuthenticatedUsageLogsAuditRoute
+  '/allowlist': typeof AuthenticatedAllowlistIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
@@ -555,7 +580,9 @@ export interface FileRoutesById {
   '/privacy-policy': typeof PrivacyPolicyRoute
   '/user-agreement': typeof UserAgreementRoute
   '/_authenticated/system-settings': typeof AuthenticatedSystemSettingsRouteRouteWithChildren
+  '/(auth)/emergency-login': typeof authEmergencyLoginRoute
   '/(auth)/forgot-password': typeof authForgotPasswordRoute
+  '/(auth)/gate': typeof authGateRoute
   '/(auth)/oauth': typeof authOauthRoute
   '/(auth)/otp': typeof authOtpRoute
   '/(auth)/register': typeof authRegisterRoute
@@ -580,6 +607,7 @@ export interface FileRoutesById {
   '/_authenticated/models/$section': typeof AuthenticatedModelsSectionRoute
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/_authenticated/usage-logs/audit': typeof AuthenticatedUsageLogsAuditRoute
+  '/_authenticated/allowlist/': typeof AuthenticatedAllowlistIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
@@ -620,7 +648,9 @@ export interface FileRouteTypes {
     | '/privacy-policy'
     | '/user-agreement'
     | '/system-settings'
+    | '/emergency-login'
     | '/forgot-password'
+    | '/gate'
     | '/oauth'
     | '/otp'
     | '/register'
@@ -645,6 +675,7 @@ export interface FileRouteTypes {
     | '/models/$section'
     | '/usage-logs/$section'
     | '/usage-logs/audit'
+    | '/allowlist/'
     | '/channels/'
     | '/dashboard/'
     | '/keys/'
@@ -682,7 +713,9 @@ export interface FileRouteTypes {
     | '/'
     | '/privacy-policy'
     | '/user-agreement'
+    | '/emergency-login'
     | '/forgot-password'
+    | '/gate'
     | '/oauth'
     | '/otp'
     | '/register'
@@ -707,6 +740,7 @@ export interface FileRouteTypes {
     | '/models/$section'
     | '/usage-logs/$section'
     | '/usage-logs/audit'
+    | '/allowlist'
     | '/channels'
     | '/dashboard'
     | '/keys'
@@ -747,7 +781,9 @@ export interface FileRouteTypes {
     | '/privacy-policy'
     | '/user-agreement'
     | '/_authenticated/system-settings'
+    | '/(auth)/emergency-login'
     | '/(auth)/forgot-password'
+    | '/(auth)/gate'
     | '/(auth)/oauth'
     | '/(auth)/otp'
     | '/(auth)/register'
@@ -772,6 +808,7 @@ export interface FileRouteTypes {
     | '/_authenticated/models/$section'
     | '/_authenticated/usage-logs/$section'
     | '/_authenticated/usage-logs/audit'
+    | '/_authenticated/allowlist/'
     | '/_authenticated/channels/'
     | '/_authenticated/dashboard/'
     | '/_authenticated/keys/'
@@ -862,11 +899,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UserAgreementRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/(auth)/emergency-login': {
+      id: '/(auth)/emergency-login'
+      path: '/emergency-login'
+      fullPath: '/emergency-login'
+      preLoaderRoute: typeof authEmergencyLoginRouteImport
+      parentRoute: typeof authRouteRoute
+    }
     '/(auth)/forgot-password': {
       id: '/(auth)/forgot-password'
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof authForgotPasswordRouteImport
+      parentRoute: typeof authRouteRoute
+    }
+    '/(auth)/gate': {
+      id: '/(auth)/gate'
+      path: '/gate'
+      fullPath: '/gate'
+      preLoaderRoute: typeof authGateRouteImport
       parentRoute: typeof authRouteRoute
     }
     '/(auth)/oauth': {
@@ -1001,6 +1052,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/user/reset'
       preLoaderRoute: typeof authUserResetRouteImport
       parentRoute: typeof authRouteRoute
+    }
+    '/_authenticated/allowlist/': {
+      id: '/_authenticated/allowlist/'
+      path: '/allowlist'
+      fullPath: '/allowlist/'
+      preLoaderRoute: typeof AuthenticatedAllowlistIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/channels/': {
       id: '/_authenticated/channels/'
@@ -1272,7 +1330,9 @@ declare module '@tanstack/react-router' {
 }
 
 interface authRouteRouteChildren {
+  authEmergencyLoginRoute: typeof authEmergencyLoginRoute
   authForgotPasswordRoute: typeof authForgotPasswordRoute
+  authGateRoute: typeof authGateRoute
   authOauthRoute: typeof authOauthRoute
   authOtpRoute: typeof authOtpRoute
   authRegisterRoute: typeof authRegisterRoute
@@ -1283,7 +1343,9 @@ interface authRouteRouteChildren {
 }
 
 const authRouteRouteChildren: authRouteRouteChildren = {
+  authEmergencyLoginRoute: authEmergencyLoginRoute,
   authForgotPasswordRoute: authForgotPasswordRoute,
+  authGateRoute: authGateRoute,
   authOauthRoute: authOauthRoute,
   authOtpRoute: authOtpRoute,
   authRegisterRoute: authRegisterRoute,
@@ -1369,6 +1431,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedModelsSectionRoute: typeof AuthenticatedModelsSectionRoute
   AuthenticatedUsageLogsSectionRoute: typeof AuthenticatedUsageLogsSectionRoute
   AuthenticatedUsageLogsAuditRoute: typeof AuthenticatedUsageLogsAuditRoute
+  AuthenticatedAllowlistIndexRoute: typeof AuthenticatedAllowlistIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
@@ -1395,6 +1458,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedModelsSectionRoute: AuthenticatedModelsSectionRoute,
   AuthenticatedUsageLogsSectionRoute: AuthenticatedUsageLogsSectionRoute,
   AuthenticatedUsageLogsAuditRoute: AuthenticatedUsageLogsAuditRoute,
+  AuthenticatedAllowlistIndexRoute: AuthenticatedAllowlistIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,

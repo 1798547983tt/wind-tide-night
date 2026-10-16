@@ -488,6 +488,23 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   'user.topup_complete': 'Completed top-up order for the user',
   'user.reset_passkey': 'Reset the user passkey',
   'user.oauth_unbind': 'Removed an OAuth binding for the user',
+  // wind-tide: allowlist, entry requests, emergency login and the takeover
+  // of an existing database
+  'wt.allowlist_add': 'Added allowlist entry {{id}}',
+  'wt.allowlist_update': 'Updated the note of allowlist entry {{id}}',
+  'wt.allowlist_remove': 'Removed allowlist entry {{id}}',
+  'wt.allowlist_restore': 'Restored allowlist entry {{id}}',
+  'wt.allowlist_pin':
+    'Locked allowlist entry {{id}} to Discord account {{discord_username}} ({{discord_id}})',
+  'wt.entry_approve': 'Approved entry request {{id}}',
+  'wt.entry_reject': 'Rejected entry request {{id}}',
+  'wt.emergency_login': 'Emergency login used',
+  'wt.emergency_link_issued': 'Emergency login link issued',
+  'wt.emergency_login_failed': 'Emergency login attempt failed',
+  'wt.takeover':
+    'Disabled {{accounts}} accounts outside the allowlist when the site took over an existing database',
+  'wt.owner_rebound':
+    'Bound the root account to the new owner Discord account and cleared its password: deleted {{access_tokens}} access tokens, {{passkeys}} passkeys and {{two_factor}} two-factor setups, and switched off {{relay_keys}} API keys',
   // System settings
   'option.update': 'Updated system setting {{key}}',
   'option.passkey_domains':
@@ -622,6 +639,17 @@ export function renderAuditContent(
       return t('Batch deleted {{count}} redemption codes', { count })
     }
     return t('Batch deleted redemption codes (count not recorded)')
+  }
+  // wind-tide: a removal that took access away from a linked account also
+  // says what it revoked.
+  if (
+    op.action === 'wt.allowlist_remove' &&
+    typeof op.params?.access_tokens === 'number'
+  ) {
+    return t(
+      'Removed allowlist entry {{id}}: deleted {{access_tokens}} access tokens and switched off {{relay_keys}} API keys',
+      { ...op.params }
+    )
   }
   const template = AUDIT_TEMPLATES[op.action]
   if (!template) return null

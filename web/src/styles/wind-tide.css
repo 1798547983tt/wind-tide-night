@@ -1,0 +1,823 @@
+/*
+Copyright (C) 2026 风与潮之夜 (Night of Wind & Tide) contributors
+
+Part of a modified version of new-api by QuantumNous, licensed under the GNU
+Affero General Public License v3.0 or later. See the LICENSE file.
+*/
+
+/*
+ * 风与潮之夜 (Night of Wind & Tide) — brand layer.
+ *
+ * Imported right after theme.css, so these tokens replace the default palette
+ * while the optional presets in theme-presets.css still win when a member
+ * picks one. Light is the day theme 「风」 (cream paper, sakura, matcha,
+ * afternoon sun); dark is the night theme 「潮之夜」 (midnight sea, moonlight,
+ * tide glow, crimson). The motion primitives below serve the opening and the
+ * landing page and all stop under prefers-reduced-motion.
+ */
+@import '@fontsource/zhi-mang-xing/index.css';
+@import '@fontsource-variable/noto-serif-sc/index.css';
+@import '@fontsource-variable/cormorant-garamond/index.css';
+@import '@fontsource-variable/cormorant-garamond/wght-italic.css';
+
+@theme inline {
+  --font-brush: 'Zhi Mang Xing', 'Noto Serif SC Variable', 'KaiTi', serif;
+  --font-mincho:
+    'Noto Serif SC Variable', 'Noto Serif SC', 'Noto Serif JP', 'Yu Mincho',
+    'Hiragino Mincho ProN', 'Songti SC', 'SimSun', serif;
+  --font-display:
+    'Cormorant Garamond Variable', 'Cormorant Garamond',
+    'Noto Serif SC Variable', Georgia, serif;
+
+  --color-wt-sakura: var(--wt-sakura);
+  --color-wt-matcha: var(--wt-matcha);
+  --color-wt-sun: var(--wt-sun);
+  --color-wt-tide: var(--wt-tide);
+  --color-wt-crimson: var(--wt-crimson);
+  --color-wt-moon: var(--wt-moon);
+  --color-wt-ink: var(--wt-ink);
+  --color-wt-paper: var(--wt-paper);
+  --color-wt-glow: var(--wt-glow);
+  --color-wt-silver: var(--wt-silver);
+  --color-wt-bronze: var(--wt-bronze);
+}
+
+:root {
+  --wt-sakura: #f2b6c6;
+  --wt-matcha: #9dbb8a;
+  --wt-sun: #f2c46b;
+  --wt-tide: #4fa3c7;
+  --wt-crimson: #b5223a;
+  --wt-moon: #fff6e6;
+  --wt-ink: #2b2231;
+  --wt-paper: #fbf7f1;
+  /* Text on top of artwork: ink on the bright day sky. */
+  --wt-glow: rgb(255 250 242 / 0.85);
+  /* Second and third place on the podium; the sun is first. */
+  --wt-silver: #a7b0c3;
+  --wt-bronze: #c4854f;
+
+  --background: #fbf7f1;
+  --foreground: #2b2231;
+  --card: #fffcf8;
+  --card-foreground: #2b2231;
+  --popover: #fffdfb;
+  --popover-foreground: #2b2231;
+  --primary: #b83a63;
+  --primary-foreground: #fff7fa;
+  --secondary: #f5e4e6;
+  --secondary-foreground: #6a2d45;
+  --muted: #f2ebe3;
+  --muted-foreground: #6c6170;
+  --accent: color-mix(in oklch, var(--primary) 10%, var(--background));
+  --accent-foreground: #2b2231;
+  --destructive: #c2333f;
+  --destructive-foreground: #fff7f7;
+  --success: #4f7f43;
+  --success-foreground: #f6fff2;
+  --warning: #b97a12;
+  --warning-foreground: #2b2231;
+  --info: #2f7ea0;
+  --info-foreground: #f2fbff;
+  --neutral: #8a7f8c;
+  --neutral-foreground: #fbf7f1;
+  --border: #eadfd5;
+  --input: #e4d6cb;
+  --ring: #b83a63;
+  --chart-1: #d2577e;
+  --chart-2: #6e9a5b;
+  --chart-3: #3e92b5;
+  --chart-4: #e0a53a;
+  --chart-5: #8a5a9e;
+  --overview-accent-1: var(--chart-1);
+  --overview-accent-2: var(--chart-2);
+  --overview-accent-3: var(--chart-3);
+  --sidebar: #f7f1e9;
+  --sidebar-foreground: #2b2231;
+  --sidebar-primary: #b83a63;
+  --sidebar-primary-foreground: #fff7fa;
+  --sidebar-accent: color-mix(in oklch, var(--primary) 11%, var(--sidebar));
+  --sidebar-accent-foreground: #7a2948;
+  --sidebar-border: #e8dcd1;
+  --sidebar-ring: #b83a63;
+  --skeleton-base: #f1e9e0;
+  --skeleton-highlight: #f8f2eb;
+}
+
+.dark {
+  --wt-sakura: #f29bb4;
+  --wt-matcha: #8fcb9b;
+  --wt-sun: #f2c46b;
+  --wt-tide: #6fd9d1;
+  --wt-crimson: #e0435a;
+  --wt-moon: #eef2ff;
+  --wt-ink: #0a0f24;
+  --wt-paper: #e8ecf8;
+  --wt-glow: rgb(111 217 209 / 0.45);
+  --wt-silver: #c6cee1;
+  --wt-bronze: #dc9f6b;
+
+  --background: #0a0f24;
+  --foreground: #e8ecf8;
+  --card: #10183a;
+  --card-foreground: #e8ecf8;
+  --popover: #141d45;
+  --popover-foreground: #e8ecf8;
+  --primary: #6fd9d1;
+  --primary-foreground: #04211f;
+  --secondary: #1b2653;
+  --secondary-foreground: #cfddff;
+  --muted: #141c42;
+  --muted-foreground: #9ea9ce;
+  --accent: color-mix(in oklch, var(--primary) 16%, var(--background));
+  --accent-foreground: #e8ecf8;
+  --destructive: #f0566e;
+  --destructive-foreground: #1a0509;
+  --success: #7dd893;
+  --success-foreground: #062010;
+  --warning: #f2c46b;
+  --warning-foreground: #241703;
+  --info: #7ab8ff;
+  --info-foreground: #06152a;
+  --neutral: #8c96ba;
+  --neutral-foreground: #0a0f24;
+  --border: rgb(168 184 255 / 0.14);
+  --input: rgb(168 184 255 / 0.2);
+  --ring: #6fd9d1;
+  --chart-1: #6fd9d1;
+  --chart-2: #f0566e;
+  --chart-3: #f2c46b;
+  --chart-4: #a99bff;
+  --chart-5: #5ea8ff;
+  --sidebar: #080c1e;
+  --sidebar-foreground: #e8ecf8;
+  --sidebar-primary: #6fd9d1;
+  --sidebar-primary-foreground: #04211f;
+  --sidebar-accent: color-mix(in oklch, var(--primary) 14%, var(--sidebar));
+  --sidebar-accent-foreground: #cff5f1;
+  --sidebar-border: rgb(168 184 255 / 0.12);
+  --sidebar-ring: #6fd9d1;
+  --skeleton-base: #18214a;
+  --skeleton-highlight: #222d5e;
+}
+
+/* Everything below lives in the components layer, so Tailwind utilities on
+ * the same element (absolute, inset-0, opacity-0, …) still win over it. */
+@layer components {
+  /* ── Texture ─────────────────────────────────────────────────────────── */
+
+  /* Film grain laid over artwork so flat gradients and upscaled pixels read as
+   * paper and paint rather than as a screen. */
+  .wt-grain {
+    position: relative;
+    isolation: isolate;
+  }
+  .wt-grain::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.09;
+    mix-blend-mode: multiply;
+  }
+  .dark .wt-grain::after {
+    opacity: 0.14;
+    mix-blend-mode: overlay;
+  }
+
+  /* Keeps the hero copy legible. On phones the copy spans the width, so the
+   * page colour rises from the bottom; from sm up the copy sits bottom-left
+   * and the wash stays there, leaving the rest of the painting clear. */
+  .wt-hero-scrim {
+    background: linear-gradient(
+      to top,
+      var(--background) 0%,
+      color-mix(in oklab, var(--background) 55%, transparent) 32%,
+      transparent 60%
+    );
+  }
+  @media (width >= 40rem) {
+    .wt-hero-scrim {
+      background:
+        radial-gradient(
+          115% 75% at 0% 100%,
+          color-mix(in oklab, var(--background) 88%, transparent) 0%,
+          color-mix(in oklab, var(--background) 50%, transparent) 40%,
+          transparent 72%
+        ),
+        linear-gradient(to top, var(--background) 0%, transparent 14%);
+    }
+  }
+
+  /* ── Calligraphy ─────────────────────────────────────────────────────── */
+
+  .wt-vertical {
+    writing-mode: vertical-rl;
+    text-orientation: upright;
+  }
+
+  /* Each character is revealed top to bottom like a brush stroke soaking into
+   * paper: blur, then a mask sweeping down the glyph. */
+  .wt-ink-char {
+    display: inline-block;
+    opacity: 0;
+    mask-image: linear-gradient(180deg, #000 0%, #000 45%, transparent 55%);
+    mask-size: 100% 220%;
+    mask-repeat: no-repeat;
+    mask-position: 0 100%;
+    animation: wt-ink-in 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  @keyframes wt-ink-in {
+    0% {
+      opacity: 0;
+      filter: blur(14px);
+      transform: translateY(-0.06em) scale(1.08);
+      mask-position: 0 100%;
+    }
+    55% {
+      opacity: 1;
+      filter: blur(1.5px);
+    }
+    100% {
+      opacity: 1;
+      filter: blur(0);
+      transform: none;
+      mask-position: 0 0;
+    }
+  }
+
+  /* ── Wind ────────────────────────────────────────────────────────────── */
+
+  /* Paths use pathLength="1": a short dash enters at the start and leaves past
+   * the end, with a gap long enough that only one dash is ever visible. */
+  .wt-wind-line {
+    stroke-dasharray: 0.22 1;
+    stroke-dashoffset: 0.22;
+    animation: wt-wind 7s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  }
+
+  @keyframes wt-wind {
+    0% {
+      stroke-dashoffset: 0.22;
+      opacity: 0;
+    }
+    15% {
+      opacity: 1;
+    }
+    70% {
+      opacity: 0.9;
+    }
+    100% {
+      stroke-dashoffset: -1;
+      opacity: 0;
+    }
+  }
+
+  /* ── Tide (opening exit) ─────────────────────────────────────────────── */
+
+  /* The opening is masked away from the bottom up behind a wavy edge; the foam
+   * crest travels with that edge. Both run on the same duration and easing. */
+  .wt-tide-mask {
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 300' preserveAspectRatio='none'%3E%3Cpath d='M0 0H1200V150C1150 156 1125 156 1075 150S1000 144 950 150 875 156 825 150 750 144 700 150 625 156 575 150 500 144 450 150 375 156 325 150 250 144 200 150 125 156 75 150 25 144 0 150Z'/%3E%3C/svg%3E");
+    mask-size: 200% 300%;
+    mask-repeat: no-repeat;
+    mask-position: 0% 0%;
+  }
+  .wt-tide-mask[data-tide='out'] {
+    animation: wt-tide-mask var(--wt-tide-duration, 1100ms)
+      cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  }
+  /* The mask edge sits at 150dvh − 200dvh·p; the front draws its crest 10dvh
+   * below its own top, so it travels from 140dvh to −60dvh. */
+  .wt-tide-front {
+    transform: translate3d(0, 140dvh, 0);
+  }
+  .wt-tide-front[data-tide='out'] {
+    animation: wt-tide-front var(--wt-tide-duration, 1100ms)
+      cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  }
+
+  @keyframes wt-tide-mask {
+    to {
+      mask-position: 100% 100%;
+    }
+  }
+  @keyframes wt-tide-front {
+    from {
+      transform: translate3d(0, 140dvh, 0);
+    }
+    to {
+      transform: translate3d(-50%, -60dvh, 0);
+    }
+  }
+
+  /* ── Theatre (opening) ───────────────────────────────────────────────── */
+
+  /* Velvet drawn in CSS: folds come from a repeating gradient in vw, so when a
+   * panel gathers to the side its folds bunch up like real cloth. */
+  .wt-curtain-panel {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 50.6%;
+    background:
+      radial-gradient(
+        120% 55% at 50% 0%,
+        rgb(255 196 170 / 0.24),
+        transparent 62%
+      ),
+      linear-gradient(
+        180deg,
+        rgb(0 0 0 / 0.42),
+        transparent 24%,
+        transparent 70%,
+        rgb(0 0 0 / 0.55)
+      ),
+      repeating-linear-gradient(
+        90deg,
+        #45060f 0,
+        #741020 1.5vw,
+        #a21a31 3vw,
+        #c32b45 3.9vw,
+        #8c1527 5.3vw,
+        #520814 7vw
+      );
+    box-shadow: inset 0 0 7vw rgb(0 0 0 / 0.5);
+    transition: transform 1.5s cubic-bezier(0.72, 0, 0.18, 1);
+  }
+  .wt-curtain-panel::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .7 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.28;
+    mix-blend-mode: multiply;
+  }
+  .wt-curtain-panel[data-side='left'] {
+    left: 0;
+    transform-origin: 0 50%;
+  }
+  .wt-curtain-panel[data-side='right'] {
+    right: 0;
+    transform-origin: 100% 50%;
+  }
+  .wt-curtain-panel[data-open='true'][data-side='left'] {
+    transform: scaleX(0.1) skewY(-2deg);
+  }
+  .wt-curtain-panel[data-open='true'][data-side='right'] {
+    transform: scaleX(0.1) skewY(2deg);
+  }
+
+  /* The swagged pelmet across the top, scalloped along its lower edge. */
+  .wt-valance {
+    position: absolute;
+    inset: 0 0 auto;
+    height: clamp(4.5rem, 14vh, 9rem);
+    background:
+      linear-gradient(180deg, rgb(0 0 0 / 0.3), transparent 60%),
+      linear-gradient(
+          0deg,
+          #d9a441 0,
+          #f6d488 0.18rem,
+          #9b6a1c 0.36rem,
+          transparent 0.36rem
+        )
+        0 calc(100% - 1.6rem) / 100% 0.36rem no-repeat,
+      repeating-linear-gradient(
+        90deg,
+        #5c0a17 0,
+        #9c1930 3vw,
+        #b9263f 4.5vw,
+        #6e0d1c 6vw
+      );
+    mask:
+      linear-gradient(#000, #000) top / 100% calc(100% - 1.6rem) no-repeat,
+      radial-gradient(circle at 50% 0, #000 68%, transparent 70%) bottom / 6vw
+        1.8rem repeat-x;
+    box-shadow: 0 1.2rem 2rem rgb(0 0 0 / 0.35);
+    transition: transform 1.2s cubic-bezier(0.65, 0, 0.35, 1);
+  }
+  .wt-valance[data-lift='true'] {
+    transform: translateY(-110%);
+  }
+
+  /* Soft sunbeams drifting across the stage once the curtain is open. */
+  .wt-beams {
+    background:
+      linear-gradient(
+        105deg,
+        transparent 18%,
+        rgb(255 236 200 / 0.16) 24%,
+        transparent 30%
+      ),
+      linear-gradient(
+        112deg,
+        transparent 38%,
+        rgb(255 240 210 / 0.12) 44%,
+        transparent 52%
+      ),
+      linear-gradient(
+        101deg,
+        transparent 58%,
+        rgb(255 230 190 / 0.1) 62%,
+        transparent 68%
+      );
+    mix-blend-mode: screen;
+    animation: wt-beams 9s ease-in-out infinite alternate;
+  }
+  @keyframes wt-beams {
+    from {
+      transform: translateX(-3%);
+      opacity: 0.7;
+    }
+    to {
+      transform: translateX(3%);
+      opacity: 1;
+    }
+  }
+
+  /* A crescent drawn as a single stroke. */
+  .wt-crescent-path {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: wt-draw 1.4s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  }
+  @keyframes wt-draw {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  /* ── Small loops ─────────────────────────────────────────────────────── */
+
+  @keyframes wt-drift-down {
+    0% {
+      transform: translateY(-100%);
+      opacity: 0;
+    }
+    30% {
+      opacity: 1;
+    }
+    100% {
+      transform: translateY(220%);
+      opacity: 0;
+    }
+  }
+  .wt-scroll-cue {
+    animation: wt-drift-down 2.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  }
+
+  @keyframes wt-breathe {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-6px);
+    }
+  }
+  .wt-breathe {
+    animation: wt-breathe 6s ease-in-out infinite;
+  }
+
+  /* Waves drawn twice as wide as their box and shifted by half: seamless. */
+  @keyframes wt-wave-drift {
+    to {
+      transform: translateX(-50%);
+    }
+  }
+  .wt-wave-drift {
+    animation: wt-wave-drift 22s linear infinite;
+  }
+  .wt-wave-drift-reverse {
+    animation: wt-wave-drift 34s linear infinite reverse;
+  }
+  @keyframes wt-wave-drift-y {
+    to {
+      transform: translateY(-50%);
+    }
+  }
+  .wt-wave-drift-y {
+    animation: wt-wave-drift-y 26s linear infinite;
+  }
+  .wt-wave-drift-y-reverse {
+    animation: wt-wave-drift-y 38s linear infinite reverse;
+  }
+
+  /* ── Paintings at night ──────────────────────────────────────────────── */
+
+  /* Turns a daylight painting into a moonlit one without WebGL: the picture
+   * itself is dimmed by the caller, this layer adds the cold sky above and the
+   * deep sea colour below. */
+  .wt-moonwash {
+    background:
+      radial-gradient(
+        70% 45% at 22% 6%,
+        rgb(238 242 255 / 0.24),
+        transparent 70%
+      ),
+      linear-gradient(
+        180deg,
+        rgb(24 38 96 / 0.34) 0%,
+        rgb(10 15 36 / 0.22) 45%,
+        rgb(10 15 36 / 0.72) 100%
+      );
+  }
+
+  /* ── Tickets ─────────────────────────────────────────────────────────── */
+
+  /* An admission ticket: two half-circle notches bite into the perforated
+   * line between the stub and the body. --wt-stub sets where that line is. */
+  .wt-ticket {
+    --wt-stub: 4.75rem;
+    --wt-notch: 0.7rem;
+    mask:
+      radial-gradient(
+          circle at var(--wt-stub) 0,
+          transparent var(--wt-notch),
+          #000 calc(var(--wt-notch) + 0.5px)
+        )
+        top / 100% 51% no-repeat,
+      radial-gradient(
+          circle at var(--wt-stub) 100%,
+          transparent var(--wt-notch),
+          #000 calc(var(--wt-notch) + 0.5px)
+        )
+        bottom / 100% 51% no-repeat;
+  }
+  .wt-ticket-perforation {
+    background-image: linear-gradient(
+      to bottom,
+      currentColor 0 0.35rem,
+      transparent 0.35rem 0.7rem
+    );
+    background-size: 1px 0.7rem;
+    background-repeat: repeat-y;
+  }
+
+  /* An empty seal slot waiting for its stamp. It animates `scale`, so the
+   * seal's own `rotate` stays as it is. */
+  @keyframes wt-await {
+    0%,
+    100% {
+      opacity: 0.55;
+      scale: 1;
+    }
+    50% {
+      opacity: 1;
+      scale: 1.04;
+    }
+  }
+  .wt-await {
+    animation: wt-await 3.2s ease-in-out infinite;
+  }
+
+  /* ── Check-in stamp ──────────────────────────────────────────────────── */
+
+  /* The print lands a touch large and is pressed flat. These animate the
+   * individual `scale` and `translate` properties, so a stamp keeps its own
+   * `rotate`. */
+  @keyframes wt-imprint {
+    0% {
+      opacity: 0;
+      scale: 1.25;
+    }
+    55% {
+      opacity: 1;
+      scale: 0.95;
+    }
+    100% {
+      opacity: 1;
+      scale: 1;
+    }
+  }
+  .wt-imprint {
+    animation: wt-imprint 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* Ink soaking outward from a fresh print. */
+  @keyframes wt-ink-ring {
+    from {
+      opacity: 0.6;
+      scale: 0.85;
+    }
+    to {
+      opacity: 0;
+      scale: 1.65;
+    }
+  }
+  .wt-ink-ring {
+    animation: wt-ink-ring 0.9s ease-out 0.15s both;
+  }
+
+  /* Cash coins thrown up from the print; each sets --wt-dx, --wt-dy,
+   * --wt-spin and --wt-delay. */
+  @keyframes wt-coin {
+    0% {
+      opacity: 0;
+      translate: 0 0;
+      rotate: 0deg;
+    }
+    15% {
+      opacity: 1;
+    }
+    65% {
+      opacity: 1;
+      translate: var(--wt-dx) var(--wt-dy);
+    }
+    100% {
+      opacity: 0;
+      translate: var(--wt-dx) calc(var(--wt-dy) + 1.25rem);
+      rotate: var(--wt-spin);
+    }
+  }
+  .wt-coin {
+    animation: wt-coin 1.5s cubic-bezier(0.2, 0.8, 0.35, 1) both;
+    animation-delay: calc(0.2s + var(--wt-delay, 0ms));
+  }
+
+  /* The reward floats up over the print and fades; the caption keeps it. */
+  @keyframes wt-reward-rise {
+    0% {
+      opacity: 0;
+      translate: 0 0.75rem;
+    }
+    20% {
+      opacity: 1;
+      translate: 0 0;
+    }
+    75% {
+      opacity: 1;
+      translate: 0 -1.5rem;
+    }
+    100% {
+      opacity: 0;
+      translate: 0 -2rem;
+    }
+  }
+  .wt-reward-rise {
+    animation: wt-reward-rise 2s ease-out 0.2s both;
+  }
+
+  /* ── Rankings ────────────────────────────────────────────────────────── */
+
+  /* Light over the top of the rankings page: the afternoon sun and a drift of
+   * sakura by day, moonlight and tide glow at night. */
+  .wt-rankings-sky {
+    background:
+      radial-gradient(
+        55% 60% at 72% 0%,
+        color-mix(in oklab, var(--wt-sun) 26%, transparent),
+        transparent 70%
+      ),
+      radial-gradient(
+        45% 50% at 12% 8%,
+        color-mix(in oklab, var(--wt-sakura) 24%, transparent),
+        transparent 70%
+      );
+    mask-image: linear-gradient(to bottom, #000 35%, transparent);
+  }
+  .dark .wt-rankings-sky {
+    background:
+      radial-gradient(
+        50% 55% at 72% 0%,
+        rgb(238 242 255 / 0.12),
+        transparent 70%
+      ),
+      radial-gradient(
+        45% 50% at 12% 8%,
+        color-mix(in oklab, var(--wt-tide) 14%, transparent),
+        transparent 70%
+      );
+  }
+
+  /* The podium rises out of the tide one place after another; --wt-delay
+   * sets each one's turn. It animates `translate`, so `scale` and `rotate`
+   * stay free. */
+  @keyframes wt-podium-rise {
+    from {
+      opacity: 0;
+      translate: 0 2.5rem;
+    }
+    to {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+  .wt-podium-rise {
+    animation: wt-podium-rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--wt-delay, 0ms);
+  }
+
+  /* ── Mascot ──────────────────────────────────────────────────────────── */
+
+  /* Waiting in her corner she sways on the breeze, rising and leaning a
+   * little and pivoting at her feet. */
+  @keyframes wt-mascot-idle {
+    0%,
+    100% {
+      translate: 0 0;
+      rotate: 0deg;
+    }
+    35% {
+      translate: 0 -3px;
+      rotate: -1.5deg;
+    }
+    70% {
+      translate: 0 -1px;
+      rotate: 1deg;
+    }
+  }
+  .wt-mascot-idle {
+    transform-origin: 50% 100%;
+    animation: wt-mascot-idle 5.5s ease-in-out infinite;
+  }
+
+  /* A speech bubble pops out towards her; its origin class points at her. */
+  @keyframes wt-bubble-pop {
+    from {
+      opacity: 0;
+      scale: 0.85;
+    }
+    to {
+      opacity: 1;
+      scale: 1;
+    }
+  }
+  .wt-bubble-pop {
+    animation: wt-bubble-pop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+
+  /* At the desk she peeks out of the bottom edge, leans up when the pointer
+   * comes to her, and stands up to speak or to show keyboard focus. */
+  .wt-desk-mascot {
+    translate: 0 45%;
+    transition: translate 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @media (hover: hover) {
+    .wt-desk-mascot:hover {
+      translate: 0 28%;
+    }
+  }
+  .wt-desk-mascot[data-pose='stand'],
+  .wt-desk-mascot:has(:focus-visible) {
+    translate: 0 -0.5rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .wt-ink-char {
+      animation-duration: 1ms;
+      animation-delay: 0ms !important;
+    }
+    .wt-wind-line,
+    .wt-scroll-cue,
+    .wt-breathe,
+    .wt-beams,
+    .wt-wave-drift,
+    .wt-wave-drift-reverse,
+    .wt-wave-drift-y,
+    .wt-wave-drift-y-reverse,
+    .wt-await,
+    .wt-imprint,
+    .wt-podium-rise,
+    .wt-mascot-idle,
+    .wt-bubble-pop {
+      animation: none;
+    }
+    /* The still print and its caption say it all. */
+    .wt-ink-ring,
+    .wt-coin,
+    .wt-reward-rise {
+      display: none;
+    }
+    .wt-crescent-path {
+      animation: none;
+      stroke-dashoffset: 0;
+    }
+    .wt-wind-line {
+      opacity: 0;
+    }
+    .wt-desk-mascot {
+      transition: none;
+    }
+  }
+}
+
+/* ── The desk mascot's corner ─────────────────────────────────────────── */
+
+/* On desktops she keeps the console's bottom-right corner (DESIGN.md §8), so
+ * the page footer's controls, such as a table's pagination, end before her,
+ * and a page without a footer can scroll its end out from under her.
+ * Unlayered, so it wins over the layout's own padding utilities. */
+@media (min-width: 64rem) {
+  :root:has([data-slot='desk-mascot']) [data-slot='page-footer'] {
+    padding-right: 8.5rem;
+  }
+  :root:has([data-slot='desk-mascot'])
+    [data-slot='page-content']:has(+ [data-slot='page-footer']:empty) {
+    padding-bottom: 5rem;
+  }
+}

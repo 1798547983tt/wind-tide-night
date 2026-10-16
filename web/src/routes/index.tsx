@@ -18,8 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute } from '@tanstack/react-router'
 
-import { Home } from '@/features/home'
+// wind-tide: the front door is the 风与潮之夜 landing page.
+import { LandingPage } from '@/features/wind-tide'
 
 export const Route = createFileRoute('/')({
-  component: Home,
+  component: LandingPage,
 })

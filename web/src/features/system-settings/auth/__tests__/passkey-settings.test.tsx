@@ -19,13 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 // @vitest-environment-options {"url":"https://console.example.com:8443"}
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import {
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-  RouterProvider,
-} from '@tanstack/react-router'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createInstance, type i18n } from 'i18next'
@@ -39,7 +32,6 @@ import { api } from '@/lib/api'
 
 import { SettingsPageProvider } from '../../components/settings-page-context'
 import type { PasskeyDomainChange } from '../../types'
-import { AuthSettings } from '../index'
 import { PasskeySection } from '../passkey-section'
 
 const domainHint =
@@ -130,59 +122,9 @@ beforeEach(async () => {
 })
 
 describe('Passkey website guidance', () => {
-  it.each([
-    ['', ''],
-    ['www.nekoapi.com', 'www.nekoapi.com'],
-    ['www.nekoapi.com,old.nekoapi.com', 'www.nekoapi.com\nold.nekoapi.com'],
-  ])(
-    'loads saved compatible domains "%s" through the authentication settings page',
-    async (legacy, displayed) => {
-      vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
-      vi.mocked(api.get).mockImplementation(async (url) => ({
-        data: {
-          success: true,
-          data:
-            url === '/api/option/'
-              ? [
-                  { key: 'passkey.rp_id', value: 'nekoapi.com' },
-                  { key: 'passkey.legacy_rp_ids', value: legacy },
-                ]
-              : { passkey_rp_id: 'nekoapi.com' },
-        },
-      }))
-      const root = createRootRoute()
-      const authenticated = createRoute({
-        getParentRoute: () => root,
-        id: '_authenticated',
-      })
-      const route = createRoute({
-        getParentRoute: () => authenticated,
-        path: 'system-settings/auth/$section',
-        component: AuthSettings,
-      })
-      const router = createRouter({
-        routeTree: root.addChildren([authenticated.addChildren([route])]),
-        history: createMemoryHistory({
-          initialEntries: ['/system-settings/auth/passkey'],
-        }),
-      })
-      render(
-        <Fixture>
-          <RouterProvider router={router} />
-        </Fixture>
-      )
-
-      expect(
-        await screen.findByRole('textbox', {
-          name: 'Compatible Passkey domains',
-        })
-      ).toHaveValue(displayed)
-      expect(
-        screen.getByRole('textbox', { name: 'Primary Passkey domain' })
-      ).toHaveValue('nekoapi.com')
-    }
-  )
-
+  // wind-tide: the authentication settings page no longer offers the Passkey
+  // section (wind-tide/DESIGN.md §3), so the case that loaded saved domains
+  // through that page is gone; auth-sections.test.tsx covers what it offers.
   it('previews server impact and cancels domain removal without saving other settings', async () => {
     const put = vi.spyOn(api, 'put').mockResolvedValue({
       data: {

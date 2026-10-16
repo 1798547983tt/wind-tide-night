@@ -17,15 +17,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ROLE } from '@/lib/roles'
+
 /**
  * Hook for checking admin privileges
  */
-import { useAuthStore } from '@/stores/auth-store'
+import { useViewRole } from './use-view-role'
 
 /**
  * Check if current user has admin privileges
  */
 export function useIsAdmin(): boolean {
-  const { user } = useAuthStore((state) => state.auth)
-  return (user?.role ?? 0) >= ROLE.ADMIN
+  // wind-tide: follows the owner's member view (hooks/use-view-role.ts).
+  return useViewRole() >= ROLE.ADMIN
 }

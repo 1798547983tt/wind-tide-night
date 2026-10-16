@@ -96,10 +96,14 @@ function ThemeFixture() {
 
 beforeEach(() => {
   localStorage.clear()
+  // wind-tide: "system" follows Beijing day and night, so pin the clock to
+  // midday in Beijing for the cases that expect the light theme.
+  vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-15T04:00:00Z') })
 })
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
   vi.restoreAllMocks()
   localStorage.clear()
   for (const cookie of document.cookie.split(';')) {

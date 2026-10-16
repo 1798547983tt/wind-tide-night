@@ -126,6 +126,23 @@ type FlatOAuthDefaults = {
 const oauthTabContentClassName =
   'grid min-w-0 gap-x-5 gap-y-6 lg:grid-cols-2 [&>[data-slot=form-item]]:min-w-0 lg:[&>[data-slot=form-item]:has([data-slot=switch])]:col-span-2'
 
+type OAuthProvider =
+  | 'github'
+  | 'discord'
+  | 'oidc'
+  | 'telegram'
+  | 'linuxdo'
+  | 'wechat'
+
+const OAUTH_PROVIDERS: readonly OAuthProvider[] = [
+  'github',
+  'discord',
+  'oidc',
+  'telegram',
+  'linuxdo',
+  'wechat',
+]
+
 type OAuthSetupGuideRow = {
   label: ReactNode
   value: string
@@ -240,12 +257,18 @@ const normalizeFormValues = (values: OAuthFormValues): FlatOAuthDefaults => ({
 type OAuthSectionProps = {
   defaultValues: FlatOAuthDefaults
   serverAddress: string
+  /**
+   * wind-tide: the providers to offer, all of them by default. The first one
+   * opens, and a single provider shows its settings without the tab bar.
+   */
+  providers?: readonly OAuthProvider[]
 }
 
 export function OAuthSection(props: OAuthSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
-  const [activeTab, setActiveTab] = useState('github')
+  const providers = props.providers ?? OAUTH_PROVIDERS
+  const [activeTab, setActiveTab] = useState<string>(providers[0])
   const siteUrl = resolveOAuthSiteUrl(props.serverAddress, t('Site URL'))
   const githubCallbackUrl = buildOAuthCallbackUrl(
     props.serverAddress,
@@ -394,14 +417,28 @@ export function OAuthSection(props: OAuthSectionProps) {
             <FormDirtyIndicator isDirty={form.formState.isDirty} />
 
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className='grid w-full grid-cols-6'>
-                <TabsTrigger value='github'>{t('GitHub')}</TabsTrigger>
-                <TabsTrigger value='discord'>{t('Discord')}</TabsTrigger>
-                <TabsTrigger value='oidc'>{t('OIDC')}</TabsTrigger>
-                <TabsTrigger value='telegram'>{t('Telegram')}</TabsTrigger>
-                <TabsTrigger value='linuxdo'>{t('LinuxDO')}</TabsTrigger>
-                <TabsTrigger value='wechat'>{t('WeChat')}</TabsTrigger>
-              </TabsList>
+              {providers.length > 1 && (
+                <TabsList className='grid w-full grid-cols-6'>
+                  {providers.includes('github') && (
+                    <TabsTrigger value='github'>{t('GitHub')}</TabsTrigger>
+                  )}
+                  {providers.includes('discord') && (
+                    <TabsTrigger value='discord'>{t('Discord')}</TabsTrigger>
+                  )}
+                  {providers.includes('oidc') && (
+                    <TabsTrigger value='oidc'>{t('OIDC')}</TabsTrigger>
+                  )}
+                  {providers.includes('telegram') && (
+                    <TabsTrigger value='telegram'>{t('Telegram')}</TabsTrigger>
+                  )}
+                  {providers.includes('linuxdo') && (
+                    <TabsTrigger value='linuxdo'>{t('LinuxDO')}</TabsTrigger>
+                  )}
+                  {providers.includes('wechat') && (
+                    <TabsTrigger value='wechat'>{t('WeChat')}</TabsTrigger>
+                  )}
+                </TabsList>
+              )}
 
               <TabsContent value='github' className={oauthTabContentClassName}>
                 <OAuthSetupGuide

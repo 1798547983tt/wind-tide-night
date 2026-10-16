@@ -25,6 +25,7 @@ import {
   useState,
 } from 'react'
 
+import { isBeijingNight, msUntilDayNightSwitch } from '@/lib/beijing-time'
 import {
   readThemePreference,
   THEME_STORAGE_KEYS,
@@ -61,11 +62,16 @@ const initialState: ThemeProviderState = {
 
 const ThemeContext = createContext<ThemeProviderState>(initialState)
 
+// wind-tide: "system" is the automatic day-night mode. Night (the dark theme)
+// runs from 18:00 to 06:00 Beijing time, whatever the device's own settings.
 function getSystemTheme(): ResolvedTheme {
-  if (typeof window === 'undefined') return 'light'
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
-    ? 'dark'
-    : 'light'
+  return isBeijingNight() ? 'dark' : 'light'
+}
+
+// wind-tide: the browser bar takes the page background of each theme.
+const BROWSER_BAR_COLORS: Record<ResolvedTheme, string> = {
+  light: '#fbf7f1',
+  dark: '#0a0f24',
 }
 
 function resolveTheme(theme: Theme): ResolvedTheme {
@@ -87,20 +93,39 @@ export function ThemeProvider({
 
   useEffect(() => {
     const root = window.document.documentElement
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    let switchTimer: number | undefined
 
     const applyTheme = () => {
       const nextResolvedTheme = theme === 'system' ? getSystemTheme() : theme
       root.classList.remove('light', 'dark')
       root.classList.add(nextResolvedTheme)
       setResolvedTheme(nextResolvedTheme)
+      document
+        .querySelector("meta[name='theme-color']")
+        ?.setAttribute('content', BROWSER_BAR_COLORS[nextResolvedTheme])
+
+      // wind-tide: re-evaluate right after the next 06:00 / 18:00 boundary.
+      window.clearTimeout(switchTimer)
+      if (theme === 'system') {
+        switchTimer = window.setTimeout(
+          applyTheme,
+          msUntilDayNightSwitch() + 1000
+        )
+      }
+    }
+
+    // Timers can stall while a device sleeps; check again on return.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') applyTheme()
     }
 
     applyTheme()
+    document.addEventListener('visibilitychange', onVisible)
 
-    mediaQuery.addEventListener('change', applyTheme)
-
-    return () => mediaQuery.removeEventListener('change', applyTheme)
+    return () => {
+      window.clearTimeout(switchTimer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [theme])
 
   const setTheme = useCallback(

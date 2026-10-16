@@ -27,6 +27,11 @@ import { SettingsSection } from '../components/settings-section'
 type UpdateCheckerSectionProps = {
   currentVersion?: string | null
   startTime?: number | null
+  /**
+   * wind-tide: false leaves out the check against the upstream release feed,
+   * for a modified version that ships its own image.
+   */
+  checksForUpdates?: boolean
 }
 
 export function UpdateCheckerSection(props: UpdateCheckerSectionProps) {
@@ -54,7 +59,9 @@ export function UpdateCheckerSection(props: UpdateCheckerSectionProps) {
             <div className='text-lg font-semibold'>{uptime}</div>
           </div>
         </div>
-        <SystemUpdateAction compact={false} />
+        {props.checksForUpdates !== false && (
+          <SystemUpdateAction compact={false} />
+        )}
       </div>
     </SettingsSection>
   )

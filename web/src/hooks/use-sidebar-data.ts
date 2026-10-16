@@ -16,11 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useQuery } from '@tanstack/react-query'
 import {
   Activity,
   Box,
   ClipboardList,
-  CreditCard,
   FileText,
   FlaskConical,
   Key,
@@ -32,15 +32,19 @@ import {
   ServerCog,
   Settings,
   ShieldCheck,
-  Ticket,
   User,
+  UserCheck,
   Users,
   Wallet,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import type { SidebarData } from '@/components/layout/types'
+import { pendingEntryCountQueryOptions } from '@/features/wind-tide/api'
+import { pendingCountBadge } from '@/features/wind-tide/lib/allowlist'
 import { ROLE } from '@/lib/roles'
+
+import { useViewRole } from './use-view-role'
 
 /**
  * Root navigation groups for the application sidebar.
@@ -50,6 +54,14 @@ import { ROLE } from '@/lib/roles'
  */
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
+  // wind-tide: the owner's pending entry requests show as a count on the
+  // allowlist entry. Only the owner in the admin view asks for it; a disabled
+  // query can still hold an earlier count, so the badge checks the view too.
+  const ownerView = useViewRole() >= ROLE.SUPER_ADMIN
+  const { data: pendingEntryCount = 0 } = useQuery({
+    ...pendingEntryCountQueryOptions,
+    enabled: ownerView,
+  })
 
   return {
     navGroups: [
@@ -147,16 +159,21 @@ export function useSidebarData(): SidebarData {
             url: '/users',
             icon: Users,
           },
+          // wind-tide: admission to the relay (wind-tide/DESIGN.md §3). The
+          // short name leaves room for the pending count; the page's title
+          // names both of its tabs.
           {
-            title: t('Redemption Codes'),
-            url: '/redemption-codes',
-            icon: Ticket,
+            title: t('Allowlist'),
+            url: '/allowlist',
+            icon: UserCheck,
+            requiredRole: ROLE.SUPER_ADMIN,
+            badge:
+              ownerView && pendingEntryCount > 0
+                ? pendingCountBadge(pendingEntryCount)
+                : undefined,
           },
-          {
-            title: t('Subscriptions'),
-            url: '/subscriptions',
-            icon: CreditCard,
-          },
+          // wind-tide: a free relay sells nothing, so there are no redemption
+          // codes or subscription plans to manage (wind-tide/DESIGN.md §6).
           {
             title: t('System Info'),
             url: '/system-info',

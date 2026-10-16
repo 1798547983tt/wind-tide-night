@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { SectionPageLayout } from '@/components/layout'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getUserProfile } from '@/features/profile/api'
+import { useViewRole } from '@/hooks/use-view-role'
 import {
   ADMIN_PERMISSION_RESOURCES,
   ADMIN_PERMISSION_ACTIONS,
@@ -39,9 +40,11 @@ export function AuditLogs() {
   const queryClient = useQueryClient()
   const [scope, setScope] = useState<'all' | 'self'>('all')
   const [accessRevoked, setAccessRevoked] = useState(false)
+  // wind-tide: follows the owner's member view.
+  const viewRole = useViewRole()
   const canReadAll =
     !!user &&
-    user.role >= ROLE.ADMIN &&
+    viewRole >= ROLE.ADMIN &&
     hasPermission(
       user,
       ADMIN_PERMISSION_RESOURCES.AUDIT,

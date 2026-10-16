@@ -49,6 +49,7 @@ import { api } from '@/lib/api'
 import { handleServerError } from '@/lib/handle-server-error'
 import { AuthOperationError } from '@/lib/secure-verification'
 import { getServerErrorMessageKey } from '@/lib/server-error-message'
+import { isGateRefusal, useGateStore } from '@/stores/gate-store'
 
 type OAuthRequestConfig = AxiosRequestConfig & {
   skipBusinessError?: boolean
@@ -236,6 +237,14 @@ function OAuthCallback() {
           ) {
             toast.success(i18next.t('Signed in successfully!'))
           }
+          return
+        }
+        // wind-tide: a Discord account the admission gate turns away gets a
+        // page that says where its entry request stands (wind-tide/API.md §3).
+        const gateRefusal: unknown = response.data?.data
+        if (isGateRefusal(gateRefusal)) {
+          useGateStore.getState().setRefusal(gateRefusal)
+          void navigate({ to: '/gate', replace: true })
           return
         }
         const messageKey = getServerErrorMessageKey(response.data)

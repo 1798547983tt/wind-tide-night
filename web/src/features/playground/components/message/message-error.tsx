@@ -40,7 +40,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { useAuthStore } from '@/stores/auth-store'
+import { useViewRole } from '@/hooks/use-view-role'
 
 import {
   FALLBACK_ERROR_CONTENT,
@@ -66,8 +66,9 @@ export function MessageError({
   actions,
 }: MessageErrorProps) {
   const { t } = useTranslation()
-  const user = useAuthStore((s) => s.auth.user)
-  const errorState = getMessageErrorState(message, isAdminRole(user?.role))
+  // wind-tide: follows the owner's member view.
+  const viewRole = useViewRole()
+  const errorState = getMessageErrorState(message, isAdminRole(viewRole))
 
   if (!errorState) {
     return null

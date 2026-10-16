@@ -180,3 +180,25 @@ describe('audit log sidebar entry', () => {
     expect(titles).toContain('Audit Logs')
   })
 })
+
+// wind-tide: a free relay sells nothing (wind-tide/DESIGN.md §6).
+describe('admin sidebar of a free relay', () => {
+  it('offers no redemption code or subscription pages', () => {
+    // The allowlist entry's pending-count badge reads from the query cache.
+    const client = new QueryClient()
+    const { result } = renderHook(() => useSidebarData(), {
+      wrapper: (props: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>
+          {props.children}
+        </QueryClientProvider>
+      ),
+    })
+
+    const adminTitles = result.current.navGroups
+      .find((group) => group.id === 'admin')
+      ?.items.map((item) => item.title)
+    expect(adminTitles).toContain('Users')
+    expect(adminTitles).not.toContain('Redemption Codes')
+    expect(adminTitles).not.toContain('Subscriptions')
+  })
+})

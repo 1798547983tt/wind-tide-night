@@ -184,6 +184,8 @@ export interface SystemStatus {
   custom_oauth_providers?: CustomOAuthProviderInfo[]
   log_export_enabled?: boolean
   log_max_range_days?: number
+  /** wind-tide: Discord is the only way in (wind-tide/API.md §2). */
+  wt_discord_only?: boolean
   [key: string]: unknown
 }
 

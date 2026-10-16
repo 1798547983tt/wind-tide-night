@@ -141,9 +141,12 @@ const OPERATIONS_SECTIONS = [
       currentVersion?: string | null,
       startTime?: number | null
     ) => (
+      // wind-tide: the fork ships its own image, so upstream releases are not
+      // its updates (docs/adr/0002, wind-tide/DEPLOY.md).
       <UpdateCheckerSection
         currentVersion={currentVersion}
         startTime={startTime}
+        checksForUpdates={false}
       />
     ),
   },

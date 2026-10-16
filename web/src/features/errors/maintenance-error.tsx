@@ -19,12 +19,18 @@ For commercial licensing, please contact support@quantumnous.com
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { ErrorMascot } from '@/features/wind-tide/components/mascot/error-mascot'
 
 export function MaintenanceError() {
   const { t } = useTranslation()
   return (
     <div className='h-svh'>
       <div className='m-auto flex h-full w-full flex-col items-center justify-center gap-2'>
+        {/* wind-tide: the mascot on the error pages (DESIGN.md §8). */}
+        <ErrorMascot
+          mood='sleep'
+          line={t('The tide is out for maintenance. Come back a little later~')}
+        />
         <h1 className='text-[7rem] leading-tight font-bold'>503</h1>
         <span className='font-medium'>
           {t('Website is under maintenance!')}

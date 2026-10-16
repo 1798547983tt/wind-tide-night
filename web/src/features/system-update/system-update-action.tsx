@@ -28,9 +28,9 @@ import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
+import { useViewRole } from '@/hooks/use-view-role'
 import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
-import { useAuthStore } from '@/stores/auth-store'
 
 import { SystemUpdateDialog } from './system-update-dialog'
 import { useSystemUpdate } from './use-system-update'
@@ -42,9 +42,8 @@ type SystemUpdateActionProps = {
 }
 
 export function SystemUpdateAction(props: SystemUpdateActionProps) {
-  const isAdmin = useAuthStore(
-    (state) => (state.auth.user?.role ?? 0) >= ROLE.ADMIN
-  )
+  // wind-tide: follows the owner's member view.
+  const isAdmin = useViewRole() >= ROLE.ADMIN
   if (!isAdmin) return null
   return <AdminSystemUpdateAction {...props} />
 }
