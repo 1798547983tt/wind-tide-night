@@ -162,7 +162,7 @@ export function LandingHero(props: LandingHeroProps) {
             style={{ animationDelay: '560ms' }}
           >
             {t(
-              'A free AI API relay open only to invited members. Check in every day to receive $9,999 in balance.'
+              'A free AI API relay open only to invited members. Check in every day for bonus balance.'
             )}
           </p>
           <div

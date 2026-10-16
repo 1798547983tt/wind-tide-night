@@ -42,7 +42,7 @@ export function DiscordSignIn(props: DiscordSignInProps) {
   const steps = [
     t('Authorize with your Discord account'),
     t('First visit: wait for the site owner to approve you'),
-    t('Check in every day to receive $9,999'),
+    t('Check in every day for bonus balance'),
   ]
 
   return (

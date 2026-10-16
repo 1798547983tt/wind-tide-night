@@ -125,7 +125,7 @@ export function ThreeActs() {
       label: t('Act two'),
       title: t('Check-in'),
       body: t(
-        'Check in once every check-in day to receive $9,999. Your balance has no upper limit.'
+        'Check in once every check-in day for bonus balance. Your balance has no upper limit.'
       ),
       art: 'gallery-3',
       alt: t('Afternoon tea with a heap of fresh scones'),
