@@ -371,6 +371,58 @@ Affero General Public License v3.0 or later. See the LICENSE file.
     transform: scaleX(0.1) skewY(2deg);
   }
 
+  /* The painted curtain (art "curtain-*"), faded in over the drawn one as it
+   * loads. Each half keeps its inner edge at the seam, and the pelmet is
+   * shown at the halves' scale, so the closed curtain reads as the single
+   * painting they were cut from. */
+  .wt-curtain {
+    container-type: size;
+  }
+  .wt-curtain-panel::after {
+    transition: opacity 0.6s ease-out;
+  }
+  .wt-curtain-panel[data-painted='true']::after {
+    opacity: 0;
+  }
+  .wt-curtain-art {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.6s ease-out;
+  }
+  .wt-curtain-panel[data-painted='true'] > .wt-curtain-art {
+    opacity: 1;
+  }
+  .wt-curtain-panel[data-side='left'] > .wt-curtain-art {
+    object-position: 100% 0;
+  }
+  .wt-curtain-panel[data-side='right'] > .wt-curtain-art {
+    object-position: 0 0;
+  }
+  .wt-valance-art {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    /* Twice the width a half is shown at in its 50.6%-wide panel. */
+    width: calc(2 * max(50.6cqw, 100cqh * var(--wt-curtain-aspect, 1)));
+    max-width: none;
+    height: auto;
+    opacity: 0;
+    transform: translateX(-50%);
+    transition:
+      transform 1.2s cubic-bezier(0.65, 0, 0.35, 1),
+      opacity 0.6s ease-out;
+  }
+  .wt-valance-art[data-shown='true'] {
+    opacity: 1;
+  }
+  .wt-valance-art[data-lift='true'] {
+    transform: translate(-50%, -110%);
+  }
+
   /* The swagged pelmet across the top, scalloped along its lower edge. */
   .wt-valance {
     position: absolute;
@@ -398,10 +450,15 @@ Affero General Public License v3.0 or later. See the LICENSE file.
       radial-gradient(circle at 50% 0, #000 68%, transparent 70%) bottom / 6vw
         1.8rem repeat-x;
     box-shadow: 0 1.2rem 2rem rgb(0 0 0 / 0.35);
-    transition: transform 1.2s cubic-bezier(0.65, 0, 0.35, 1);
+    transition:
+      transform 1.2s cubic-bezier(0.65, 0, 0.35, 1),
+      opacity 0.6s ease-out;
   }
   .wt-valance[data-lift='true'] {
     transform: translateY(-110%);
+  }
+  .wt-valance[data-painted='true'] {
+    opacity: 0;
   }
 
   /* Soft sunbeams drifting across the stage once the curtain is open. */

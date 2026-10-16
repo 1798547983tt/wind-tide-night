@@ -8,7 +8,9 @@ server and uploaded to the production server's art directory.
 For each image it writes resized AVIF and WebP copies, and optionally a depth
 map (white = near) used by the 2.5D parallax painting. Depth comes from the
 Depth Anything V2 Small ONNX model (Apache-2.0). A line drawing on plain white
-paper, such as the mascot, can be cut out onto a transparent background.
+paper, such as the mascot, can be cut out onto a transparent background; a
+sticker sheet drawn on a transparent background keeps it. The theatre curtain
+is split into its two halves and the pelmet that hangs across them.
 
 Full-screen paintings whose source is too small for large or high-density
 screens are first enlarged 4x with the APISR GRL anime super-resolution model
@@ -17,6 +19,7 @@ cached in `wind-tide/.cache/upscaled/`, which is gitignored as well.
 
 Usage:
   python wind-tide/tools/art_pipeline.py --src <folder with 1.png..> \
+      [--gpt <folder with the GPT-made A1.png..; default <src>/gpt>] \
       --model <depth-anything-v2-small/model.onnx> \
       [--sr-model <4x_APISR_GRL/model.onnx>] [--only stage,hero-day]
 
@@ -31,6 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 OUT_DIR = Path(__file__).resolve().parent.parent / ".serve" / "art"
@@ -40,8 +44,9 @@ STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 # Super-resolution: 4x, run on overlapping tiles padded to the model's window.
 SR_SCALE, SR_TILE, SR_PAD, SR_MULTIPLE = 4, 192, 16, 64
-# Sources at least this wide are sharp enough as they are.
-UPSCALE_BELOW = 1600
+# Sources at least this wide are sharp enough as they are: about what a
+# full-screen painting needs on a large screen.
+UPSCALE_BELOW = 2400
 # Widest copy shipped, and widest depth map (depth is smooth, so it stays small).
 FULL_WIDTH = 2880
 DEPTH_WIDTH = 1280
@@ -59,22 +64,54 @@ class Artwork:
     upscale: bool = False
     # Lift a line drawing off its white paper onto a transparent background.
     cutout: bool = False
-    # Part of the source to keep, as (left, top, right, bottom) pixels.
-    crop: tuple[int, int, int, int] | None = None
+    # The source already has a transparent background: keep it, and trim the
+    # picture to what shows.
+    alpha: bool = False
+    # Keep only the pelmet along the top of a curtain painting; what hangs
+    # below its gold fringe becomes transparent.
+    valance: bool = False
+    # Part of the source to keep, as (left, top, right, bottom): pixels, or
+    # fractions of the source's size when given as floats.
+    crop: tuple[int, int, int, int] | tuple[float, float, float, float] | None = None
     # Paper the outline closes in, such as a gap between strands of hair, as
     # (x, y) points inside each gap, counted after the crop.
     holes: tuple[tuple[int, int], ...] = ()
 
 
 ARTWORKS = [
-    Artwork(
-        "stage", "1.png", [720, 1080, 1600, 2160], depth=True, alternates=["gpt/A1.png"], upscale=True
-    ),
+    # The opening: 1.png fills a phone held upright, A1 is the same scene
+    # widened for landscape screens, and A2 and A3 are the two by moonlight.
+    Artwork("stage", "1.png", [720, 1080, 1600, 2160], depth=True, upscale=True),
+    Artwork("stage-wide", "gpt/A1.png", [720, 1080, 1600, 2160], depth=True, upscale=True),
+    Artwork("stage-night", "gpt/A2.png", [720, 1080, 1600, 2160], depth=True, upscale=True),
+    Artwork("stage-night-wide", "gpt/A3.png", [720, 1080, 1600, 2160], depth=True, upscale=True),
     Artwork(
         "hero-day", "11.png", [720, 1080, 1600, 2160], depth=True, alternates=["gpt/B1.png"], upscale=True
     ),
     Artwork("hero-night", "gpt/B2.png", [720, 1080, 1600, 2160], depth=True, upscale=True),
-    *[Artwork(f"gallery-{i}", f"{i}.png", [480, 960]) for i in (2, 3, 5, 6, 7, 8, 9, 10)],
+    *[Artwork(f"gallery-{i}", f"{i}.png", [480, 960]) for i in (2, 5, 6, 7, 8, 9, 10)],
+    # D is 3.png with its lettering painted out.
+    Artwork("gallery-3", "3.png", [480, 960], alternates=["gpt/D.png"]),
+    # The theatre curtain (E): the halves part at its centre seam, and the
+    # pelmet stays across the top. The halves start below the lowest tassel
+    # of the fringe, so no piece of pelmet gathers to the sides with them.
+    Artwork("curtain-left", "gpt/E.png", [480, 960, 1440, 1920], upscale=True, crop=(0.0, 0.14, 0.5, 1.0)),
+    Artwork("curtain-right", "gpt/E.png", [480, 960, 1440, 1920], upscale=True, crop=(0.5, 0.14, 1.0, 1.0)),
+    Artwork(
+        "curtain-valance", "gpt/E.png", [1080, 1600, 2160], upscale=True, crop=(0.0, 0.0, 1.0, 0.2), valance=True
+    ),
+    # The mascot's expressions (C): one sticker in each cell of a 3 x 2 sheet,
+    # in the order wind-tide/ASSETS.md asks for them.
+    *[
+        Artwork(
+            f"mascot-{mood}",
+            "gpt/C.png",
+            [160, 320, 480],
+            alpha=True,
+            crop=((i % 3) / 3, (i // 3) / 2, (i % 3 + 1) / 3, (i // 3 + 1) / 2),
+        )
+        for i, mood in enumerate(("wave", "rich", "sleep", "cry", "think", "toast"))
+    ],
     # Full-height panels beside the sign-in and the entry-request pages.
     Artwork("auth-welcome", "6.png", [720, 1080, 1600], upscale=True),
     Artwork("auth-tea", "9.png", [720, 1080, 1600], upscale=True),
@@ -89,13 +126,89 @@ ARTWORKS = [
     ),
 ]
 
+# Where the subject sits in each source, as fractions of the finished image,
+# written into the manifest with the files: `focus` is the point a screen of
+# another shape keeps in view, `faces` where the opening's camera pushes in,
+# and `horizon` the sea line the night grade of a day painting starts from.
+FRAMING = {
+    "1.png": {"focus": [0.5, 0.27], "faces": [0.49, 0.235]},
+    "A1.png": {"focus": [0.49, 0.4], "faces": [0.485, 0.3]},
+    "A2.png": {"focus": [0.48, 0.5], "faces": [0.478, 0.35]},
+    "A3.png": {"focus": [0.49, 0.4], "faces": [0.485, 0.3]},
+    "11.png": {"focus": [0.55, 0.3], "horizon": 0.9},
+    "B1.png": {"focus": [0.58, 0.31], "horizon": 0.75},
+    "B2.png": {"focus": [0.42, 0.33], "horizon": 0.61},
+}
 
-def pick_source(src_dir: Path, art: Artwork) -> Path | None:
+
+def pick_source(src_dir: Path, gpt_dir: Path, art: Artwork) -> Path | None:
     for candidate in [*art.alternates, art.source]:
-        path = src_dir / candidate
+        name = candidate.removeprefix("gpt/")
+        path = gpt_dir / name if name != candidate else src_dir / candidate
         if path.exists():
             return path
     return None
+
+
+def crop_box(crop: tuple, size: tuple[int, int]) -> tuple[int, int, int, int]:
+    """A crop in pixels, from pixels or from fractions of `size`."""
+    scale = (size[0], size[1], size[0], size[1])
+    return tuple(round(v * s) if isinstance(v, float) else v for v, s in zip(crop, scale))
+
+
+def trim_transparent(image: Image.Image, margin: int = 8) -> Image.Image:
+    """Clear near-invisible specks, then crop to what shows plus a margin."""
+    rgba = np.array(image)
+    rgba[..., 3][rgba[..., 3] < 16] = 0
+    result = Image.fromarray(rgba, "RGBA")
+    left, top, right, bottom = result.getchannel("A").getbbox()
+    return result.crop(
+        (
+            max(left - margin, 0),
+            max(top - margin, 0),
+            min(right + margin, result.width),
+            min(bottom + margin, result.height),
+        )
+    )
+
+
+def cut_valance(image: Image.Image) -> Image.Image:
+    """Keep the pelmet across the top of a curtain painting, nothing below it.
+
+    The pelmet ends at its gold fringe: in each column, the lowest gold pixel,
+    carried across the gaps between tassels and smoothed. The edge is found at
+    about the size the painting was made at, where the tassels are a few
+    pixels wide, and then drawn at full size with a one-pixel soft edge.
+
+    Lit folds of the velvet below the fringe pass for gold too, as thin lines
+    well below every tassel around them. A column whose gold reaches more
+    than 10 pixels below all gold in the 20 columns on either side, leaving
+    out its 3 closest neighbours on each side, takes the edge of those
+    columns instead. Tassels come every few columns, so a real one always has
+    others about as low nearby.
+    """
+    probe_width = min(image.width, 1672)
+    scale = image.width / probe_width
+    probe = image.convert("RGB").resize((probe_width, max(round(image.height / scale), 1)), Image.Resampling.BOX)
+    rgb = np.asarray(probe, dtype=np.int16)
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    # Warm and bright, with far more green than the red velvet has.
+    gold = (r > 140) & (g > 95) & (g - b > 40) & (r - g < 110)
+    rows = np.arange(gold.shape[0])[:, None]
+    edge = np.where(gold, rows, 0).max(axis=0).astype(np.float32)
+    around = sliding_window_view(np.pad(edge, 20), 41).copy()
+    around[:, 17:24] = 0
+    around = around.max(axis=1)
+    edge = np.where(edge > around + 10, around, edge)
+    edge = sliding_window_view(np.pad(edge, 8, mode="edge"), 17).max(axis=1)
+    edge = np.convolve(np.pad(edge, 4, mode="edge"), np.ones(9) / 9, mode="valid")
+    xs = (np.arange(image.width) + 0.5) / scale - 0.5
+    edge = (np.interp(xs, np.arange(probe_width), edge) + 1) * scale
+    y = np.arange(image.height, dtype=np.float32)[:, None]
+    alpha = np.clip(edge[None, :] - y, 0, 1)
+    rgba = np.dstack([np.asarray(image.convert("RGB")), (alpha * 255 + 0.5).astype(np.uint8)])
+    bottom = min(image.height, int(np.ceil(edge.max())) + 1)
+    return Image.fromarray(rgba, "RGBA").crop((0, 0, image.width, bottom))
 
 
 def save_sizes(image: Image.Image, art: Artwork) -> list[int]:
@@ -195,12 +308,14 @@ def estimate_depth(session, image: Image.Image) -> Image.Image:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--src", required=True, type=Path)
+    parser.add_argument("--gpt", type=Path, help="folder with the GPT-made images; default <src>/gpt")
     parser.add_argument("--model", type=Path)
     parser.add_argument("--sr-model", type=Path)
     parser.add_argument("--only", default="")
     args = parser.parse_args()
 
     only = {name for name in args.only.split(",") if name}
+    gpt_dir = args.gpt or args.src / "gpt"
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     manifest_path = OUT_DIR / "manifest.json"
     manifest = json.loads(manifest_path.read_text("utf-8")) if manifest_path.exists() else {}
@@ -217,21 +332,28 @@ def main() -> None:
     for art in ARTWORKS:
         if only and art.name not in only:
             continue
-        path = pick_source(args.src, art)
+        path = pick_source(args.src, gpt_dir, art)
         if path is None:
             print(f"skip {art.name}: no source")
             continue
-        image = Image.open(path).convert("RGB")
+        image = Image.open(path).convert("RGBA" if art.alpha else "RGB")
         if art.crop:
-            image = image.crop(art.crop)
+            image = image.crop(crop_box(art.crop, image.size))
+        if art.alpha:
+            image = trim_transparent(image)
         if art.cutout:
             image = cut_out(image, art.holes)
         if art.upscale and sr_session is not None and image.width < UPSCALE_BELOW:
-            cached = CACHE_DIR / f"{art.name}-{path.stem}-{int(path.stat().st_mtime)}.png"
+            key = f"{art.name}-{path.stem}-{int(path.stat().st_mtime)}"
+            if art.crop:
+                key += "-" + "-".join(f"{v:g}" for v in art.crop)
+            cached = CACHE_DIR / f"{key}.png"
             if not cached.exists():
                 CACHE_DIR.mkdir(parents=True, exist_ok=True)
                 upscale(sr_session, image).save(cached)
             image = Image.open(cached).convert("RGB")
+        if art.valance:
+            image = cut_valance(image)
         if image.width > FULL_WIDTH:
             height = round(image.height * FULL_WIDTH / image.width)
             image = image.resize((FULL_WIDTH, height), Image.Resampling.LANCZOS)
@@ -245,6 +367,7 @@ def main() -> None:
             "height": image.height,
             "sizes": widths,
             "depth": has_depth or bool(manifest.get(art.name, {}).get("depth")),
+            **FRAMING.get(path.name, {}),
         }
         print(f"done {art.name} from {path.name} {image.size}")
 

@@ -17,6 +17,14 @@
 
 2026-10-15 更新：1.png 和 11.png 已在本地用动漫超分模型放大 4 倍，开幕和昼版首页已经够清晰，A1、B1 改为可选；幕布已用代码画好，E 改为可选。现在最值得做的是 B2（夜版首页，目前是把白天的图调色成月夜）和 C（看板娘）。
 
+2026-10-16 更新：A1 到 E 八张都已生成，处理后由服务器的 `/art/` 提供，不再需要新素材。对应关系：
+
+- A1 → `stage-wide`，A2 → `stage-night`（出图是正方形），A3 → `stage-night-wide`；
+- B1 → `hero-day`（出图是正方形），B2 → `hero-night`；
+- C 切成 6 张透明贴纸：`mascot-wave`、`mascot-rich`、`mascot-sleep`、`mascot-cry`、`mascot-think`、`mascot-toast`；
+- D → `gallery-3`；
+- E 拆成左右两片幕布 `curtain-left`、`curtain-right` 和顶上的帷幔 `curtain-valance`。每一块在对应的图片加载出来之前，先显示代码画的那一块。
+
 ---
 
 ## A1 · 1.png 横版扩图

@@ -129,7 +129,7 @@ export function ThreeActs() {
       ),
       art: 'gallery-3',
       alt: t('Afternoon tea with a heap of fresh scones'),
-      objectPosition: '38% 80%',
+      objectPosition: '50% 45%',
     },
     {
       numeral: 'III',

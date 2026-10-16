@@ -10,12 +10,14 @@ import { useCallback, useEffect, useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { useTheme } from '@/context/theme-provider'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { cn } from '@/lib/utils'
 import { useOpeningStore } from '@/stores/opening-store'
 
 import { artManifestQueryOptions } from '../../api'
 import { BRAND } from '../../constants'
-import { artFile, coverWidth, pickArtUrl } from '../../lib/art'
+import { artFile, coverWidth, pickArtUrl, stageArtName } from '../../lib/art'
 import { DepthPainting } from '../depth-painting'
 import { DriftParticles } from '../drift-particles'
 import { VerticalTitle } from '../vertical-title'
@@ -37,7 +39,8 @@ const ART_WAIT_LIMIT = 4500
 const TIDE_MS = 1100
 const QUIET_MS = 1000
 
-const STAGE = 'stage'
+// Where the stage and the two faces sit in 1.png, for a manifest that does
+// not say where they sit in the painting it lists.
 const STAGE_FOCUS: [number, number] = [0.5, 0.27]
 const FACES_FOCUS: [number, number] = [0.49, 0.235]
 
@@ -48,17 +51,25 @@ export function OpeningOverlay() {
   return reducedMotion ? <QuietOpening /> : <TheatreOpening />
 }
 
+/** The opening painting for the time of day and the screen's shape. */
 function useStageArt() {
   const manifest = useQuery(artManifestQueryOptions)
-  const entry = manifest.data?.[STAGE]
+  const { resolvedTheme } = useTheme()
+  const wide = useMediaQuery('(min-aspect-ratio: 1/1)')
+  const night = resolvedTheme === 'dark'
+  const name = stageArtName(manifest.data, night, wide)
+  const entry = manifest.data?.[name]
   // Allow for part of the push-in; the camera is moving by then, which
   // hides the rest, and the opening should not wait on a larger file.
   const needed = coverWidth(entry) * 1.3
   return {
     settled: !manifest.isLoading,
-    image: pickArtUrl(STAGE, entry, needed),
-    depth: artFile(STAGE, 'depth'),
-    fallback: artFile(STAGE, entry?.sizes.at(-1) ?? 'full'),
+    night,
+    image: pickArtUrl(name, entry, needed),
+    depth: artFile(name, 'depth'),
+    fallback: artFile(name, entry?.sizes.at(-1) ?? 'full'),
+    focus: entry?.focus ?? STAGE_FOCUS,
+    faces: entry?.faces ?? FACES_FOCUS,
   }
 }
 
@@ -128,9 +139,14 @@ function TheatreOpening() {
   }, [canSkip, skip])
 
   const opened = phase !== 'title'
+  const pushed = phase === 'push' || phase === 'tide'
   let zoom = 1.06
   if (phase === 'curtain') zoom = 1
-  if (phase === 'push' || phase === 'tide') zoom = 1.6
+  if (pushed) zoom = 1.6
+  // By moonlight the painting's own window lights the room; the warm beams
+  // only haze it.
+  let beams = 'opacity-0'
+  if (opened) beams = art.night ? 'opacity-40' : 'opacity-100'
 
   return (
     <div
@@ -146,14 +162,18 @@ function TheatreOpening() {
             imageUrl={art.image}
             depthUrl={art.depth}
             fallbackSrc={art.fallback}
-            alt={t('Two girls taking afternoon tea in a rose-coloured library')}
-            focus={
-              phase === 'push' || phase === 'tide' ? FACES_FOCUS : STAGE_FOCUS
+            alt={
+              art.night
+                ? t(
+                    'Two girls taking afternoon tea in a rose-coloured library by moonlight'
+                  )
+                : t('Two girls taking afternoon tea in a rose-coloured library')
             }
+            focus={pushed ? art.faces : art.focus}
             zoom={zoom}
             parallax={0.022}
             focalDepth={0.62}
-            rays={0.9}
+            rays={art.night ? 0.35 : 0.9}
             rayOrigin={[0.12, -0.08]}
             className='absolute inset-0'
             onReady={() => setArtReady(true)}
@@ -163,14 +183,11 @@ function TheatreOpening() {
           aria-hidden='true'
           className={cn(
             'wt-beams pointer-events-none absolute inset-0 transition-opacity duration-1000',
-            opened ? 'opacity-100' : 'opacity-0'
+            beams
           )}
         />
         {opened && <DriftParticles kind='dust' density={0.9} />}
-        <StageCurtain
-          open={opened}
-          lift={phase === 'push' || phase === 'tide'}
-        />
+        <StageCurtain open={opened} lift={pushed} />
 
         <div
           className={cn(
@@ -258,7 +275,9 @@ function QuietOpening() {
         src={art.fallback}
         alt=''
         className='absolute inset-0 size-full object-cover opacity-60'
-        style={{ objectPosition: '50% 27%' }}
+        style={{
+          objectPosition: `${art.focus[0] * 100}% ${art.focus[1] * 100}%`,
+        }}
       />
       <div className='absolute inset-0 flex items-center justify-center text-[#fff1dc]'>
         <h1 className='wt-vertical font-brush text-[clamp(4rem,13vh,9rem)] leading-none'>

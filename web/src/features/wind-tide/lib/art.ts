@@ -17,9 +17,41 @@ export type ArtEntry = {
   height: number
   sizes: number[]
   depth: boolean
+  /**
+   * Where the subject sits, as fractions of the image: the point a screen of
+   * another shape keeps in view, where the opening's camera pushes in, and
+   * the sea line a day painting's night grade starts from. The pipeline
+   * writes them for the source it used.
+   */
+  focus?: [number, number]
+  faces?: [number, number]
+  horizon?: number
 }
 
 export type ArtManifest = Record<string, ArtEntry>
+
+// Opening paintings to try for each time of day and screen shape: a
+// moonlit one before a day one, then the other shape.
+const STAGE_ORDER = {
+  day: {
+    wide: ['stage-wide', 'stage'],
+    upright: ['stage', 'stage-wide'],
+  },
+  night: {
+    wide: ['stage-night-wide', 'stage-night', 'stage-wide', 'stage'],
+    upright: ['stage-night', 'stage-night-wide', 'stage', 'stage-wide'],
+  },
+}
+
+/** The opening painting the manifest offers for this time and screen. */
+export function stageArtName(
+  manifest: ArtManifest | undefined,
+  night: boolean,
+  wide: boolean
+) {
+  const order = STAGE_ORDER[night ? 'night' : 'day'][wide ? 'wide' : 'upright']
+  return order.find((name) => manifest?.[name]) ?? 'stage'
+}
 
 export function artFile(
   name: string,
@@ -44,16 +76,17 @@ export function artSrcSet(
 }
 
 /**
- * Pixels wide a painting must be to fill the viewport the way `object-fit:
- * cover` crops it, at the painting canvas's density (capped at 1.75). On a
- * tall phone screen a landscape painting is enlarged to fill the height, so
- * it needs far more pixels than the screen is wide.
+ * Pixels wide a painting must be to fill the viewport's height and `share` of
+ * its width the way `object-fit: cover` crops it, at the painting canvas's
+ * density (capped at 1.75). On a tall phone screen a landscape painting is
+ * enlarged to fill the height, so it needs far more pixels than the screen
+ * is wide.
  */
-export function coverWidth(entry: ArtEntry | undefined) {
+export function coverWidth(entry: ArtEntry | undefined, share = 1) {
   if (typeof window === 'undefined') return 1600
   const aspect = entry ? entry.width / entry.height : 16 / 9
   const dpr = Math.min(window.devicePixelRatio || 1, 1.75)
-  return Math.max(window.innerWidth, window.innerHeight * aspect) * dpr
+  return Math.max(window.innerWidth * share, window.innerHeight * aspect) * dpr
 }
 
 /**

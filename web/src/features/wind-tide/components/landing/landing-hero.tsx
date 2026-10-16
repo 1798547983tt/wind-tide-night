@@ -28,7 +28,8 @@ type LandingHeroProps = {
   isAuthenticated: boolean
 }
 
-// Where things sit in hero-day (11.png): her face and the horizon.
+// Where her face and the horizon sit in 11.png, for a manifest that does not
+// say where they sit in the painting it lists.
 const HERO_FOCUS: [number, number] = [0.55, 0.3]
 const HORIZON = 0.9
 // The re-lit night's moon, on screen: by the hat brim on wide screens, clear
@@ -63,12 +64,16 @@ export function LandingHero(props: LandingHeroProps) {
           imageUrl={pickArtUrl(name, entry, coverWidth(entry))}
           depthUrl={artFile(name, 'depth')}
           fallbackSrc={artFile(name, entry?.sizes.at(-1) ?? 'full')}
-          alt={t('A girl in a straw hat looking out over the summer sea')}
-          focus={HERO_FOCUS}
+          alt={
+            night
+              ? t('A girl in a straw hat looking out over the moonlit sea')
+              : t('A girl in a straw hat looking out over the summer sea')
+          }
+          focus={entry?.focus ?? HERO_FOCUS}
           parallax={0.016}
           focalDepth={0.55}
           night={night && name === 'hero-day'}
-          horizon={HORIZON}
+          horizon={entry?.horizon ?? HORIZON}
           moon={wide ? MOON_WIDE : MOON_NARROW}
           className='absolute inset-0 -z-20'
         />
