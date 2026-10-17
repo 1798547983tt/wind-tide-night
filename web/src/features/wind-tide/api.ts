@@ -19,6 +19,12 @@ import type {
   ApiResponse,
   CheckinMonth,
   CheckinResult,
+  DonationList,
+  DonationProgress,
+  DonationStart,
+  DonationSubmitted,
+  DonationTestResult,
+  DonationUsage,
   EntryRequest,
   EntryRequestStatus,
   Leaderboard,
@@ -228,4 +234,83 @@ export async function rejectEntryRequest(
 ): Promise<ApiResponse<EntryRequest>> {
   const res = await api.post(`/api/wt/entry-requests/${id}/reject`)
   return res.data
+}
+
+// wind-tide: donated Antigravity accounts (wind-tide/API.md §14).
+
+export const donationsQueryOptions = queryOptions({
+  queryKey: ['wind-tide', 'donations'],
+  queryFn: async () => {
+    const response =
+      await api.get<ApiResponse<DonationList>>('/api/wt/donations')
+    return requireServerSuccess(response.data).data as DonationList
+  },
+  // The page renders its own error state.
+  meta: { errorToast: false },
+})
+
+/** One record, polled by the donate dialog while the pool verifies it. */
+export function donationQueryOptions(id: number) {
+  return queryOptions({
+    queryKey: ['wind-tide', 'donations', id],
+    queryFn: async () => {
+      const response = await api.get<ApiResponse<DonationProgress>>(
+        `/api/wt/donations/${id}`
+      )
+      return requireServerSuccess(response.data).data as DonationProgress
+    },
+    meta: { errorToast: false },
+  })
+}
+
+export function donationUsageQueryOptions(id: number) {
+  return queryOptions({
+    queryKey: ['wind-tide', 'donations', id, 'usage'],
+    queryFn: async () => {
+      const response = await api.get<ApiResponse<DonationUsage>>(
+        `/api/wt/donations/${id}/usage`
+      )
+      return requireServerSuccess(response.data).data as DonationUsage
+    },
+    // The server caches usage for a minute; asking sooner returns the same.
+    staleTime: 60_000,
+    retry: false,
+    meta: { errorToast: false },
+  })
+}
+
+export async function startDonation(input: {
+  email: string
+  donation_id?: number
+}) {
+  const response = await api.post<ApiResponse<DonationStart>>(
+    '/api/wt/donations/start',
+    input
+  )
+  return requireServerSuccess(response.data).data as DonationStart
+}
+
+export async function submitDonationCallback(input: {
+  flow_token: string
+  callback_url: string
+}) {
+  const response = await api.post<ApiResponse<DonationSubmitted>>(
+    '/api/wt/donations/callback',
+    input
+  )
+  return requireServerSuccess(response.data).data as DonationSubmitted
+}
+
+export async function testDonation(id: number) {
+  const response = await api.post<ApiResponse<DonationTestResult>>(
+    `/api/wt/donations/${id}/test`
+  )
+  return requireServerSuccess(response.data).data as DonationTestResult
+}
+
+export async function removeDonation(id: number) {
+  const response = await api.post<ApiResponse<null>>(
+    `/api/wt/donations/${id}/remove`
+  )
+  return requireServerSuccess(response.data)
 }

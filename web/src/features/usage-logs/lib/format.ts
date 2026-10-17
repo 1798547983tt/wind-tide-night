@@ -507,6 +507,10 @@ const AUDIT_TEMPLATES: Record<string, string> = {
     'Cleared the passwords of {{accounts}} accounts, as this site signs in and verifies with Discord only',
   'wt.owner_rebound':
     'Bound the root account to the new owner Discord account and cleared its password: deleted {{access_tokens}} access tokens, {{passkeys}} passkeys and {{two_factor}} two-factor setups, and switched off {{relay_keys}} API keys',
+  // wind-tide: donated Antigravity accounts (wind-tide/API.md §14).
+  'wt.donation_add': 'Donated account {{id}} to the pool',
+  'wt.donation_remove': 'Removed donated account {{id}} from the pool',
+  'wt.donation_test': 'Tested donated account {{id}}',
   // System settings
   'option.update': 'Updated system setting {{key}}',
   'option.passkey_domains':

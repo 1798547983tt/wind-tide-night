@@ -58,6 +58,9 @@ describe('wind-tide audit entries', () => {
       { access_tokens: 2, relay_keys: 1, passkeys: 1, two_factor: 1 },
       '把 root 账号绑定到了新的站长 Discord 账号并清除了密码：删除了 2 个访问令牌、1 个 Passkey 和 1 个两步验证，关闭了 1 个 API 密钥',
     ],
+    ['wt.donation_add', { id: 12 }, '向号池捐赠了账号 12'],
+    ['wt.donation_remove', { id: 12 }, '从号池移除了捐赠账号 12'],
+    ['wt.donation_test', { id: 12 }, '测试了捐赠账号 12'],
   ])(
     'a %s entry reads as a Chinese sentence with its details',
     async (action, params, sentence) => {

@@ -133,3 +133,100 @@ export type GateRefusal = {
   /** Unix seconds when a rejected applicant may ask again; 0 otherwise. */
   retry_after: number
 }
+
+// wind-tide: donated Antigravity accounts (wind-tide/API.md §14).
+
+export type DonationStatus = 'verifying' | 'active' | 'failed'
+
+/** The pool's live verdict on an active donation (wind-tide/API.md §14). */
+export type PoolState =
+  | 'ok'
+  | 'cooldown'
+  | 'token_invalid'
+  | 'missing'
+  | 'disabled'
+  | 'unknown'
+
+export type DonationPool = {
+  state: PoolState
+  /** CPA's status message, cut to 200 characters; may be empty. */
+  message: string
+  /** Unix seconds when a cooldown ends; 0 when the pool gave no time. */
+  retry_at: number
+  success: number
+  failed: number
+}
+
+export type DonationTest = {
+  at: number
+  ok: boolean
+  latency_ms: number
+  message: string
+}
+
+export type Donation = {
+  id: number
+  email: string
+  status: DonationStatus
+  /** An English message key; empty unless the status is failed. */
+  fail_reason: string
+  /** Only an active donation has one. */
+  pool: DonationPool | null
+  /** Null until the first test. */
+  last_test: DonationTest | null
+  created_at: number
+  verified_at: number
+}
+
+export type DonationList = {
+  max: number
+  items: Donation[]
+}
+
+export type DonationStart = {
+  flow_token: string
+  authorization_url: string
+  expires_at: number
+  email: string
+}
+
+export type DonationSubmitted = {
+  id: number
+  status: DonationStatus
+}
+
+export type DonationProgress = {
+  id: number
+  email: string
+  status: DonationStatus
+  fail_reason: string
+}
+
+export type UsageBucket = {
+  name: string
+  /** As Google names it: `5h` or `weekly` so far. */
+  window: string
+  /** 0 to 1. */
+  remaining_fraction: number
+  /** Unix seconds; 0 when Google gave none. */
+  reset_at: number
+}
+
+export type UsageGroup = {
+  name: string
+  buckets: UsageBucket[]
+}
+
+export type DonationUsage = {
+  fetched_at: number
+  /** free, pro, ultra, ultra_lite or unknown. */
+  tier: string
+  groups: UsageGroup[]
+}
+
+export type DonationTestResult = {
+  ok: boolean
+  latency_ms: number
+  message: string
+  usage: DonationUsage | null
+}

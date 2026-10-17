@@ -23,6 +23,7 @@ import {
   ClipboardList,
   FileText,
   FlaskConical,
+  HeartHandshake,
   Key,
   LayoutDashboard,
   ListTodo,
@@ -44,6 +45,7 @@ import { pendingEntryCountQueryOptions } from '@/features/wind-tide/api'
 import { pendingCountBadge } from '@/features/wind-tide/lib/allowlist'
 import { ROLE } from '@/lib/roles'
 
+import { useStatus } from './use-status'
 import { useViewRole } from './use-view-role'
 
 /**
@@ -58,6 +60,10 @@ export function useSidebarData(): SidebarData {
   // allowlist entry. Only the owner in the admin view asks for it; a disabled
   // query can still hold an earlier count, so the badge checks the view too.
   const ownerView = useViewRole() >= ROLE.SUPER_ADMIN
+  // wind-tide: the donated accounts page exists only on a site wired to an
+  // account pool (wind-tide/API.md §14).
+  const { status } = useStatus()
+  const donationEnabled = status?.wt_donation_enabled === true
   const { data: pendingEntryCount = 0 } = useQuery({
     ...pendingEntryCountQueryOptions,
     enabled: ownerView,
@@ -128,6 +134,15 @@ export function useSidebarData(): SidebarData {
             url: '/wallet',
             icon: Wallet,
           },
+          ...(donationEnabled
+            ? [
+                {
+                  title: t('Donated accounts'),
+                  url: '/donations',
+                  icon: HeartHandshake,
+                },
+              ]
+            : []),
           {
             title: t('Profile'),
             url: '/profile',

@@ -186,6 +186,8 @@ export interface SystemStatus {
   log_max_range_days?: number
   /** wind-tide: Discord is the only way in (wind-tide/API.md §2). */
   wt_discord_only?: boolean
+  /** wind-tide: members may donate Antigravity accounts (wind-tide/API.md §14). */
+  wt_donation_enabled?: boolean
   [key: string]: unknown
 }
 
