@@ -24,6 +24,10 @@ services:
       # config, never from the ServerAddress setting the console can change.
       WT_SITE_URL: ${SITE_ADDRESS:?set SITE_ADDRESS in .env}
       WT_AVATAR_DIR: /data/wt-avatars
+      # Optional: the CLIProxyAPI account pool behind the donated-accounts
+      # page (wind-tide/API.md §14). Both empty = feature hidden.
+      WT_CPA_URL: ${WT_CPA_URL:-}
+      WT_CPA_MANAGEMENT_KEY: ${WT_CPA_MANAGEMENT_KEY:-}
       # Caddy is the only proxy in front of the site; trust its network only.
       TRUSTED_PROXIES: 10.255.250.0/24
       ERROR_LOG_ENABLED: 'true'

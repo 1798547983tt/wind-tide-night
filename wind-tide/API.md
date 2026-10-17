@@ -10,6 +10,8 @@
 | `WT_SITE_URL` | 站点对外的地址，例如 `https://your.site`。只用于 `wt emergency-login` 拼出完整的应急链接（第 4 节）；不填时命令只打印路径 |
 | `WT_AVATAR_DIR` | 头像缓存目录，默认 `./wt-avatars`（容器内即 `/data/wt-avatars`） |
 | `SESSION_SECRET` | 上游变量。头像地址的签名密钥由它派生（第 8 节），必须固定；用随机值时，重启前发出的头像地址全部失效 |
+| `WT_CPA_URL` | 可选。号池（CLIProxyAPI，下称 CPA）的地址，只到端口、不带路径，例如 `http://cliproxyapi:8317`。与 `WT_CPA_MANAGEMENT_KEY` 一起非空（去掉首尾空白后）才开启捐赠账号功能（第 14 节） |
+| `WT_CPA_MANAGEMENT_KEY` | 可选。CPA 管理密钥的明文。只从环境变量读，不进 options 表，控制台改不了：密钥会被发往 `WT_CPA_URL`，不能让后台权限改地址 |
 
 **站长账号**：每次启动都检查 root 账号。
 
@@ -41,6 +43,7 @@
 ## 2. `/api/status` 新增字段
 
 - `wt_discord_only: true`
+- `wt_donation_enabled: true|false`：第 1 节的两个号池变量都非空时为 `true`（第 14 节）
 
 ## 3. Discord 登录闸门
 
@@ -324,6 +327,9 @@ new-api wt emergency-login [--base-url https://your.site]
 | `wt.takeover` | 接管已有数据库时禁用了账号（第 1 节） | 站长 | `accounts`、`removed_entries`、`access_tokens`、`relay_keys` |
 | `wt.passwords_cleared` | 启动时清掉了账号的密码（第 1 节） | 站长 | `accounts` |
 | `wt.owner_rebound` | root 被重新绑定到站长 ID（第 1 节） | 站长 | `access_tokens`、`relay_keys`、`passkeys`、`two_factor`（启用中的两步验证数） |
+| `wt.donation_add` | 成员提交回调地址（受理成功或失败都记，第 14 节） | 成员 | `id`（没建记录时为 0）、`provider`、`success` |
+| `wt.donation_remove` | 成员移除捐赠账号（成功或失败都记） | 成员 | `id`、`provider`、`success` |
+| `wt.donation_test` | 成员测试捐赠账号 | 成员 | `id`、`provider`、`success`、`latency_ms` |
 
 ## 13. 错误消息
 
@@ -349,5 +355,107 @@ new-api wt emergency-login [--base-url https://your.site]
 | `This entry request has already been handled` | 重复批准，或拒绝一个不是 pending 的申请 |
 | `This Discord account has been removed, restore it from the allowlist instead` | 批准一个已移除的 Discord 账号，或在用户管理里启用它 |
 | `Only accounts on the allowlist can be enabled` | 在用户管理里启用一个没有白名单条目的账号 |
+| `Account donation is not enabled on this site` | 捐赠：功能未开启（第 14 节） |
+| `Enter a valid email address` | 捐赠：邮箱格式不对 |
+| `You can donate at most {{max}} accounts` | 捐赠：超过每人 10 个 |
+| `This account is already in the pool` | 捐赠：站内已有记录、号池里已有同名凭证，或收尾时文件名冲突 |
+| `The account pool is temporarily unavailable, try again later` | 捐赠：任何号池调用失败 |
+| `This donation session is invalid or has expired, start again` | 捐赠：flow 无效、过期或已消费 |
+| `Paste the complete address from the browser's address bar` | 捐赠：回调地址解析失败、缺 state 或 code |
+| `This address does not belong to the current donation` | 捐赠：state 不匹配 |
+| `Google denied the authorization` | 捐赠：回调地址带 error |
+| `Google authorization failed, start again` | 捐赠：号池报授权失败 |
+| `Authorization timed out, start again` | 捐赠：号池超时或核验到截止 |
+| `Could not confirm the donation result, start again` | 捐赠：号池忘记 state 且找不到凭证；站点重启后的收尾失败 |
+| `The authorized Google account does not match the email you entered` | 捐赠：收尾兜底失败 |
+| `Donation does not exist` | 捐赠：id 不存在或不属于本人 |
+| `This donation is still being verified` | 捐赠：10 分钟内移除核验中的记录 |
+| `Only an active donation can be tested` | 捐赠：测试非 active 记录 |
+| `Wait a minute before testing again` | 捐赠：1 分钟内重复测试 |
+| `This account has reached today's test limit` | 捐赠：当日 20 次用完 |
+| `Could not fetch usage for this account` | 捐赠：用量查询失败 |
+| `Donation removed` | 捐赠：移除成功 |
+| `Donated account #{{id}} joined the pool` | 捐赠：成员系统日志 |
+| `Donation #{{id}} failed` | 捐赠：成员系统日志 |
 
 另外沿用上游已有的消息：`State parameter is empty or mismatched`（Discord 回调缺少或对不上登录 Cookie）、`User has been banned`、`Invalid parameters`，以及第 5 节的二次验证消息。
+
+## 14. 捐赠账号
+
+成员把自己不用的 Antigravity 账号授权给站点的号池（CLIProxyAPI，下称 CPA），大家共享其用量。设计全文见 `wind-tide/specs/2026-10-17-antigravity-donation-design.md`，术语见根目录 `CONTEXT.md`「捐赠」组。开关是第 1 节的两个环境变量和第 2 节的 `wt_donation_enabled`；功能关闭时下列接口一律返回 `Account donation is not enabled on this site`。
+
+### 14.1 路由
+
+全部经过 `DisableCache`、`UserAuth`，只接受浏览器会话（`accessTokenSessionRule`，个人访问令牌不能调用）。`UserCriticalRateLimit("wt-donation")` 由 start、callback、remove 共用，`UserCriticalRateLimit("wt-donation-test")` 给 test，都是每成员 20 次/20 分钟（`CRITICAL_RATE_LIMIT*` 环境变量）。
+
+| 方法 | 路径 | 作用 |
+|---|---|---|
+| `POST` | `/api/wt/donations/start` | 开始捐赠或重新授权，拿到 Google 授权链接 |
+| `POST` | `/api/wt/donations/callback` | 提交 Google 跳转到的回调地址 |
+| `GET` | `/api/wt/donations` | 本人的捐赠列表（附号池实时状态） |
+| `GET` | `/api/wt/donations/:id` | 单条状态（弹窗第 3 步每 3 秒轮询，只查数据库） |
+| `GET` | `/api/wt/donations/:id/usage` | 剩余用量（缓存 60 秒） |
+| `POST` | `/api/wt/donations/:id/test` | 测试账号（1 次/分钟、20 次/天） |
+| `POST` | `/api/wt/donations/:id/remove` | 移除（同时删掉号池里的凭证） |
+
+所有 `:id` 都只在本人的记录里找；不存在和不是本人的都返回 `Donation does not exist`，不区分。
+
+### 14.2 开始 `POST /api/wt/donations/start`
+
+请求 `{"email": "someone@example.com", "donation_id": 12}`，`donation_id` 可选，重新授权 `active`/`failed` 记录时带。检查顺序：邮箱格式与长度（最长 254）、每人最多 10 条（`verifying` + `active`）、站内同邮箱是否已有未移除的记录、号池里是否已有 `antigravity-<email>.json`；重新授权沿用原记录和它的邮箱，不再做数量、站内重复和号池重复这三项检查。然后向 CPA 要授权链接（`login_hint` 为该邮箱），建一条 `auth_flows`（purpose `wt_donation`，绑定成员和浏览器会话，5 分钟）。响应：
+
+```json
+{"flow_token": "…", "authorization_url": "https://accounts.google.com/…", "expires_at": 1760000300, "email": "someone@example.com"}
+```
+
+### 14.3 回调 `POST /api/wt/donations/callback`
+
+请求 `{"flow_token": "…", "callback_url": "http://localhost:51121/oauth-callback?state=…&code=…"}`，地址最长 2048。服务端只解析不请求：缺 state 或 code → `Paste the complete address from the browser's address bar`；带 `error` → `Google denied the authorization`；state 与 flow 里存的不同 → `This address does not belong to the current donation`；flow 无效、过期或已消费 → `This donation session is invalid or has expired, start again`。通过后一次性消费 flow，建（或复用）`wt_donations` 记录为 `verifying`，把回调地址交给 CPA，并启动核验任务。响应 `{"id": 12, "status": "verifying"}`。无论受理成功还是失败都审计 `wt.donation_add`。
+
+### 14.4 核验任务
+
+每 2 秒问 CPA 一次授权状态，最多 120 秒。CPA 报成功后按 `antigravity-<email>.json` 找凭证，找到即 `active`（记下 `credential_name`、`auth_index`、`project_id`、`verified_at`）；CPA 说成功却找不到同名文件时，用提交前后的凭证列表差集兜底：恰好新增一个未被认领的凭证就按它登记，邮箱以实际授权的为准。失败原因写进 `fail_reason`，取值：`Authorization timed out, start again`、`Google denied the authorization`、`Google authorization failed, start again`、`Could not confirm the donation result, start again`、`The authorized Google account does not match the email you entered`、`This account is already in the pool`、`The account pool is temporarily unavailable, try again later`。成功或失败都给成员写一条系统日志（`Donated account #{{id}} joined the pool` / `Donation #{{id}} failed`）。站点启动时把遗留的 `verifying` 记录收尾一次。
+
+### 14.5 列表 `GET /api/wt/donations`
+
+```json
+{"max": 10, "items": [{"id": 12, "email": "someone@example.com", "status": "active", "fail_reason": "", "pool": {"state": "cooldown", "message": "quota exhausted", "retry_at": 1760000600, "success": 120, "failed": 3}, "last_test": {"at": 1760000000, "ok": true, "latency_ms": 850, "message": ""}, "created_at": 1759990000, "verified_at": 1759990100}]}
+```
+
+只含 `status != removed` 的记录，按创建时间倒序。`pool` 只在 `active` 时给，否则 `null`，由一次凭证列表调用（进程内缓存 15 秒）按 `credential_name` 匹配；`pool.message` 是 CPA 的 `status_message`，截到 200 字符；`last_test` 没测过时为 `null`。`pool.state` 按顺序取第一个命中：
+
+| 条件 | `state` |
+|---|---|
+| 凭证列表取不到（CPA 不可用） | `unknown` |
+| 列表里没有这个文件名 | `missing` |
+| `disabled` 为真 | `disabled` |
+| `status_message` 含 `unauthori`、`invalid_grant`、`invalid token`、`refresh token` 或 `401`（不区分大小写） | `token_invalid` |
+| `next_retry_after` 或任一 `cooldowns[].retry_at` 在未来，或 `unavailable` 为真 | `cooldown`（`retry_at` 取最晚的一个，没有时间时为 0） |
+| `status == "error"` | `token_invalid` |
+| 其余 | `ok` |
+
+### 14.6 单条 `GET /api/wt/donations/:id`
+
+`{"id": 12, "email": "someone@example.com", "status": "verifying", "fail_reason": ""}`，只查数据库，不调 CPA。
+
+### 14.7 剩余用量 `GET /api/wt/donations/:id/usage`
+
+记录必须是 `active`。按记录缓存 60 秒；失败不缓存，对外统一 `Could not fetch usage for this account`（`success:false`，HTTP 200）。
+
+```json
+{"fetched_at": 1760000000, "tier": "pro", "groups": [{"name": "Gemini 3 Pro", "buckets": [{"name": "Gemini 3 Pro", "window": "5h", "remaining_fraction": 0.73, "reset_at": 1760003600}]}]}
+```
+
+`tier` 是 `free`/`pro`/`ultra`/`ultra_lite`/`unknown`；`window` 原样透传（已知 `5h`、`weekly`）；`remaining_fraction` 是 0 到 1 的小数；`reset_at` 是 Unix 秒，没有时为 0。
+
+### 14.8 测试 `POST /api/wt/donations/:id/test`
+
+非 `active` → `Only an active donation can be tested`；距上次测试不足 60 秒 → `Wait a minute before testing again`；当天（`WtCheckinDay` 的北京时间自然日）已满 20 次 → `This account has reached today's test limit`。然后绕过缓存查一次用量并计时，更新 `last_test_*`、`tests_day`、`tests_today`，成功时顺带更新用量缓存，审计 `wt.donation_test`。响应 `{"ok": true, "latency_ms": 850, "message": "", "usage": {…}}`；失败时 `ok` 为 false、`usage` 为 `null`、`message` 为归类说明（`Account pool unreachable`、`HTTP 401 from Google` 一类、`Unreadable usage response from Google`、`The credential has no Google project`），HTTP 仍是 200 且 `success` 为 true。
+
+### 14.9 移除 `POST /api/wt/donations/:id/remove`
+
+`verifying` 且提交不足 10 分钟 → `This donation is still being verified`。有 `credential_name` 时先让 CPA 删凭证（200 或 404 算成功，其他 → `The account pool is temporarily unavailable, try again later`，记录不动），再把记录改成 `removed` 并写 `removed_at`，清掉它的用量缓存，审计 `wt.donation_remove`，返回 `Donation removed`。
+
+### 14.10 常量与表
+
+每人上限 10；flow 5 分钟；核验 2 秒一次、最多 120 秒；CPA 请求 15 秒超时、响应最多读 1 MB；凭证列表缓存 15 秒、用量缓存 60 秒；测试 1 次/分钟、20 次/天。表 `wt_donations` 的字段见规格第 5 节，CPA 的具体接口见规格第 6 节。日志里不记 code、回调地址、令牌、密钥、state 和邮箱。

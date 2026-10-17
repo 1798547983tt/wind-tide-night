@@ -107,3 +107,21 @@ _Avoid_: 暗色模式、黑夜模式
 **自动昼夜** (Auto day-night):
 按北京时间在昼主题与夜主题之间自动切换的默认行为；成员手动选择后以其选择为准。
 _Avoid_: 跟随系统
+
+## 捐赠
+
+**捐赠账号** (Donated account):
+成员通过 Google 授权交给站点号池统一调配的 Antigravity 账号。
+_Avoid_: 捐号、上传账号
+
+**号池** (Account pool):
+站点接入的账号代理持有的全部 Antigravity 凭证，站点渠道从里面轮询取号。
+_Avoid_: 账号库
+
+**剩余用量** (Remaining allowance):
+Google 给某个捐赠账号的、按模型组和时间窗口计的剩余比例。不是成员余额。
+_Avoid_: 额度、quota
+
+**回调地址** (Callback address):
+Google 授权完成后浏览器被跳转到的 localhost 地址，成员把它整个粘贴回来。
+_Avoid_: 回调 URL（面向成员时）

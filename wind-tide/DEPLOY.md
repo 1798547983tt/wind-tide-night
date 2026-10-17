@@ -63,6 +63,7 @@ EOF
    - `SITE_HOST` 填 `<域名>`，不带 `https://`。浏览器打开 IP 网址时不会说明自己要访问哪个站点，Caddy 靠这一项决定出示哪张证书。
    - `WT_OWNER_DISCORD_ID` 填站长的 Discord 用户 ID。
    - `CRYPTO_SECRET` 定下后不要再改，否则加密存储的数据会解不开。
+   - `WT_CPA_URL` 和 `WT_CPA_MANAGEMENT_KEY` 可选，接入号池（捐赠账号功能）时才填，见第 9 节；不填时功能隐藏。
 
 3. **上传插画**（本地执行；插画由本地素材流水线生成在 `wind-tide/.serve/art/`）：
 
@@ -179,3 +180,19 @@ docker compose start site
 - **site 一直不是 healthy**：`docker compose logs --tail 100 site` 看报错。常见原因是 `.env` 少填了某一项，compose 启动时会直接提示缺哪个变量。
 - **插画不显示**：确认 `/opt/wind-tide/art/manifest.json` 存在，浏览器访问 `https://<域名>/art/manifest.json` 能打开。
 - **磁盘快满**：`docker system df` 看占用，`docker image prune -f` 清旧镜像。
+
+## 9. 接入号池（可选）
+
+捐赠账号功能要连一个同机部署的 CLIProxyAPI（CPA）。CPA 本身的部署不在本文范围；它要和站点容器在同一个 Docker 网络里（本站是 `wind-tide_edge`），并开启 `management.allow-remote`。
+
+1. `.env` 追加两行（密钥是 CPA 配置 `management.secret-key` 对应的明文，不要写进任何文档或聊天）：
+
+   ```
+   WT_CPA_URL=http://cliproxyapi:8317
+   WT_CPA_MANAGEMENT_KEY=<CPA 管理密钥明文>
+   ```
+
+2. 先 `docker compose config` 看变量有没有带进 `site` 服务，再 `docker compose pull site && docker compose up -d site`。
+3. 验证：`curl -s https://<域名>/api/status` 里 `wt_donation_enabled` 为 `true`；登录后侧栏「个人」里出现「捐赠账号」；打开页面不报"无法连接号池"。
+4. 页面报号池不可用时，先看 `docker compose logs --tail 100 site` 里有没有 CPA 返回 401 的记录，**不要反复刷新**：CPA 对错误密钥有 5 次/30 分钟的封禁，封禁期间正确的密钥也会被拒。
+5. 回退：删掉 `.env` 里这两行，`docker compose up -d site`。功能隐藏，表 `wt_donations` 留着无害。

@@ -131,3 +131,7 @@ grill 会话的产出。术语见 [CONTEXT.md](../CONTEXT.md)，关键取舍见 
 ## 13. 未决
 
 - 上游自带的登录 Cookie（`new_api_refresh`、`new_api_has_session`）没有 `__Host-` 前缀，子域名能种下同名 Cookie 干扰登录状态。改它会碰上游的会话代码，留待以后处理。
+
+## 14. 捐赠账号
+
+成员可以把不用的 Antigravity 小号授权给站点的号池（CLIProxyAPI），额度由全体成员共享；没有回报，捐赠者随时可以移除。页面在「个人 → 捐赠账号」，只在服务器配置了号池地址和管理密钥时出现（DEPLOY.md §9）。每人最多 10 个，只能看到自己捐的账号的状态和剩余用量。完整设计（流程、状态机、安全控制、测试）见 `wind-tide/specs/2026-10-17-antigravity-donation-design.md`，接口约定见 `API.md` 第 14 节。
