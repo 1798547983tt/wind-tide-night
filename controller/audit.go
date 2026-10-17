@@ -88,6 +88,10 @@ var auditContentTemplates = map[string]string{
 	"wt.emergency_login_failed": "Emergency login attempt failed",
 	"wt.takeover":               "Disabled ${accounts} accounts outside the allowlist when wind-tide took over the database",
 	"wt.owner_rebound":          "Bound the root account to a new owner Discord account and revoked its credentials",
+	// wind-tide: donated Antigravity accounts (wind-tide/API.md §14).
+	"wt.donation_add":    "Donated account ${id} to the pool",
+	"wt.donation_remove": "Removed donated account ${id} from the pool",
+	"wt.donation_test":   "Tested donated account ${id}",
 }
 
 func recordPasskeyDomainAudit(c *gin.Context, change *model.PasskeyDomainChange, confirmed bool, err error) {

@@ -136,6 +136,10 @@ func main() {
 	// Codex credential auto-refresh check every 10 minutes, refresh when expires within 1 day
 	service.StartCodexCredentialAutoRefreshTask()
 
+	// wind-tide: settle the donated accounts a restart left verifying
+	// (wind-tide/API.md §14).
+	service.StartWtDonationVerifyTask()
+
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
 

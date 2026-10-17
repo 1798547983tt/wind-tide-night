@@ -128,6 +128,8 @@ var wtModels = []any{
 	&WtEntryRequest{},
 	&WtDiscordProfile{},
 	&WtEmergencyToken{},
+	// wind-tide: donated Antigravity accounts (wind-tide/API.md §14).
+	&WtDonation{},
 }
 
 // WtValidDiscordID reports whether id has the shape of a Discord user ID.

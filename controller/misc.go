@@ -127,6 +127,9 @@ func GetStatus(c *gin.Context) {
 		"log_max_range_days":          operation_setting.GetLogSetting().MaxRangeDays,
 		// wind-tide: Discord is the only sign-in method (wind-tide/API.md §2).
 		"wt_discord_only": true,
+		// wind-tide: members may donate Antigravity accounts to the pool only
+		// when the site is wired to one (wind-tide/API.md §14).
+		"wt_donation_enabled": service.WtDonationEnabled(),
 	}
 
 	// 根据启用状态注入可选内容

@@ -318,6 +318,14 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/wt/entry-requests/pending-count": accessTokenScopeRule("user:read"),
 	"POST /api/wt/entry-requests/:id/approve":  accessTokenScopeRule("user:write"),
 	"POST /api/wt/entry-requests/:id/reject":   accessTokenScopeRule("user:write"),
+	// wind-tide: donated accounts (wind-tide/API.md §14) take browser sessions only.
+	"POST /api/wt/donations/start":      accessTokenSessionRule,
+	"POST /api/wt/donations/callback":   accessTokenSessionRule,
+	"GET /api/wt/donations":             accessTokenSessionRule,
+	"GET /api/wt/donations/:id":         accessTokenSessionRule,
+	"GET /api/wt/donations/:id/usage":   accessTokenSessionRule,
+	"POST /api/wt/donations/:id/test":   accessTokenSessionRule,
+	"POST /api/wt/donations/:id/remove": accessTokenSessionRule,
 }
 
 var (

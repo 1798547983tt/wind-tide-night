@@ -8,7 +8,7 @@ import (
 )
 
 // wind-tide: the fork's routes under /api/wt (wind-tide/API.md §4, §5 and
-// §7–§9). Every dashboard route is also declared in
+// §7–§9 and §14). Every dashboard route is also declared in
 // middleware/access_token_routes.go.
 func setWtRoutes(apiRouter *gin.RouterGroup) {
 	wtRoute := apiRouter.Group("/wt")
@@ -29,5 +29,20 @@ func setWtRoutes(apiRouter *gin.RouterGroup) {
 		ownerRoute.GET("/entry-requests/pending-count", controller.WtCountPendingEntryRequests)
 		ownerRoute.POST("/entry-requests/:id/approve", controller.WtApproveEntryRequest)
 		ownerRoute.POST("/entry-requests/:id/reject", controller.WtRejectEntryRequest)
+	}
+
+	// wind-tide: donated Antigravity accounts (wind-tide/API.md §14). Members
+	// only, browser sessions only (middleware/access_token_routes.go); the
+	// write routes share one per-member critical rate limit, tests another.
+	donationRoute := wtRoute.Group("/donations")
+	donationRoute.Use(middleware.DisableCache(), middleware.UserAuth())
+	{
+		donationRoute.POST("/start", middleware.UserCriticalRateLimit("wt-donation"), controller.WtStartDonation)
+		donationRoute.POST("/callback", middleware.UserCriticalRateLimit("wt-donation"), controller.WtSubmitDonationCallback)
+		donationRoute.GET("", controller.WtListDonations)
+		donationRoute.GET("/:id", controller.WtGetDonation)
+		donationRoute.GET("/:id/usage", controller.WtGetDonationUsage)
+		donationRoute.POST("/:id/test", middleware.UserCriticalRateLimit("wt-donation-test"), controller.WtTestDonation)
+		donationRoute.POST("/:id/remove", middleware.UserCriticalRateLimit("wt-donation"), controller.WtRemoveDonation)
 	}
 }
