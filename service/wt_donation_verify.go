@@ -47,8 +47,9 @@ var (
 	wtCredentialsCache    []WtCPACredential
 	wtCredentialsCachedAt time.Time
 
-	wtUsageMu    sync.Mutex
-	wtUsageCache = map[int]wtUsageEntry{}
+	wtUsageMu sync.Mutex
+	// wtUsageCache holds the last usage answer per credential auth index.
+	wtUsageCache = map[string]wtUsageEntry{}
 )
 
 type wtUsageEntry struct {
@@ -158,37 +159,47 @@ func WtForgetPoolCredentials() {
 // cache unless fresh is set; a fresh answer replaces the cached one. The
 // string classifies a failure for the member.
 func WtDonationUsage(ctx context.Context, donation *model.WtDonation, fresh bool) (*WtUsage, string, error) {
+	if donation.AuthIndex == "" || donation.ProjectId == "" {
+		return nil, "The credential has no Google project", ErrWtUsageUnavailable
+	}
+	return WtCredentialUsage(ctx, donation.AuthIndex, donation.ProjectId, fresh)
+}
+
+// WtCredentialUsage is what Google says a pool credential has left, from the
+// 60-second cache unless fresh is set; a failure is not cached. The string
+// classifies a failure for the member.
+func WtCredentialUsage(ctx context.Context, authIndex, projectID string, fresh bool) (*WtUsage, string, error) {
 	if !fresh {
 		wtUsageMu.Lock()
-		entry, cached := wtUsageCache[donation.Id]
+		entry, cached := wtUsageCache[authIndex]
 		wtUsageMu.Unlock()
 		if cached && time.Since(entry.cachedAt) < wtUsageCacheTTL {
 			return entry.usage, "", nil
 		}
 	}
-	if donation.AuthIndex == "" || donation.ProjectId == "" {
-		return nil, "The credential has no Google project", ErrWtUsageUnavailable
-	}
-	usage, detail, err := WtCPAFetchUsage(ctx, donation.AuthIndex, donation.ProjectId)
+	usage, detail, err := WtCPAFetchUsage(ctx, authIndex, projectID)
 	if err != nil {
 		return nil, detail, err
 	}
 	wtUsageMu.Lock()
-	wtUsageCache[donation.Id] = wtUsageEntry{usage: usage, cachedAt: time.Now()}
+	wtUsageCache[authIndex] = wtUsageEntry{usage: usage, cachedAt: time.Now()}
 	wtUsageMu.Unlock()
 	return usage, "", nil
 }
 
-// WtForgetDonationUsage drops the cached usage of a removed donation.
-func WtForgetDonationUsage(id int) {
+// WtForgetCredentialUsage drops the cached usage of a removed credential.
+func WtForgetCredentialUsage(authIndex string) {
 	wtUsageMu.Lock()
-	delete(wtUsageCache, id)
+	delete(wtUsageCache, authIndex)
 	wtUsageMu.Unlock()
 }
 
-// WtResetDonationCaches empties both caches; tests call it between cases.
+// WtResetDonationCaches empties every pool cache and the level snapshot;
+// tests call it between cases.
 func WtResetDonationCaches() {
 	WtForgetPoolCredentials()
+	WtForgetAisRotation()
+	WtResetPoolLevel()
 	wtUsageMu.Lock()
 	clear(wtUsageCache)
 	wtUsageMu.Unlock()
@@ -305,7 +316,7 @@ func wtFinishDonation(ctx context.Context, job WtDonationVerifyJob, confirmed bo
 		}
 		return
 	}
-	claimed, err := model.WtDonationCredentialClaimed(entry.Name, job.DonationID)
+	claimed, err := model.WtDonationCredentialClaimed(entry.Name, WtDonationProvider, job.DonationID)
 	if err != nil {
 		common.SysError(common.LogText("wt donation: donation %d could not be checked for conflicts: %s", job.DonationID, err.Error()))
 		return
@@ -325,6 +336,10 @@ func wtFinishDonation(ctx context.Context, job WtDonationVerifyJob, confirmed bo
 	WtForgetPoolCredentials()
 	if err := WtCPASetCredentialNote(ctx, entry.Name, fmt.Sprintf("donor:%d", job.UserID)); err != nil {
 		common.SysError(common.LogText("wt donation: the note of donation %d was not saved", job.DonationID))
+	}
+	// wind-tide: the pool page announces the donation (wind-tide/API.md §15).
+	if err := model.WtInsertPoolEvent(model.WtPoolEventAntigravityDonated, WtDonationProvider, job.UserID, model.WtDisplayNameOfUser(job.UserID), 1, ""); err != nil {
+		common.SysError(common.LogText("wt donation: the announcement of donation %d was not saved: %s", job.DonationID, err.Error()))
 	}
 	model.RecordLog(job.UserID, model.LogTypeSystem, common.NewMessage("Donated account #{{id}} joined the pool", map[string]any{"id": job.DonationID}))
 }
@@ -389,7 +404,7 @@ func wtFindNewCredential(ctx context.Context, job WtDonationVerifyJob) (*WtCPACr
 		if _, known := job.PoolBefore[wtNameDigest(entry.Name)]; known {
 			continue
 		}
-		claimed, err := model.WtDonationCredentialClaimed(entry.Name, job.DonationID)
+		claimed, err := model.WtDonationCredentialClaimed(entry.Name, WtDonationProvider, job.DonationID)
 		if err != nil {
 			return nil, err
 		}
@@ -429,7 +444,7 @@ func StartWtDonationVerifyTask() {
 // every verifying donation is matched by address, with no fallback, since
 // the snapshot of the pool did not survive the restart.
 func WtSettleVerifyingDonations() {
-	donations, err := model.ListVerifyingWtDonations()
+	donations, err := model.ListVerifyingWtDonations(WtDonationProvider)
 	if err != nil {
 		common.SysError(common.LogText("wt donation: verifying donations could not be listed: %s", err.Error()))
 		return

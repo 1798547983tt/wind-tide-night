@@ -130,6 +130,9 @@ func GetStatus(c *gin.Context) {
 		// wind-tide: members may donate Antigravity accounts to the pool only
 		// when the site is wired to one (wind-tide/API.md §14).
 		"wt_donation_enabled": service.WtDonationEnabled(),
+		// wind-tide: and AI Studio accounts to the AIS playground pool
+		// (wind-tide/API.md §15).
+		"wt_ais_enabled": service.WtAisEnabled(),
 	}
 
 	// 根据启用状态注入可选内容

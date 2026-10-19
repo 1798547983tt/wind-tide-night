@@ -3,6 +3,7 @@ package controller
 import (
 	"cmp"
 	"errors"
+	"net/http"
 	"net/url"
 	"slices"
 	"strconv"
@@ -18,9 +19,10 @@ import (
 	"gorm.io/gorm"
 )
 
-// wind-tide: donated Antigravity accounts (wind-tide/API.md §14). A member
-// donates through CPA's Google authorization; the site keeps the ledger and
-// never sees a token.
+// wind-tide: donated accounts. A member donates an Antigravity account
+// through CPA's Google authorization (wind-tide/API.md §14) or an AI Studio
+// account by pasting its Cookie, which the aistudio-api pool keeps (§15);
+// the site keeps the ledger and never sees a token or stores a Cookie.
 
 const (
 	wtDonationFlowTTL      = 5 * time.Minute
@@ -28,6 +30,9 @@ const (
 	wtDonationTestInterval = 60 * time.Second
 	wtDonationTestsPerDay  = 20
 	wtDonationRemoveGrace  = 10 * time.Minute
+	// wtAisDonateBodyMax leaves room for the JSON escaping of a Cookie of
+	// service.WtAisCookieMaxBytes.
+	wtAisDonateBodyMax = 3 * service.WtAisCookieMaxBytes
 )
 
 var (
@@ -40,6 +45,10 @@ var (
 	errWtDonationNotActive    = common.NewMessage("Only an active donation can be tested")
 	errWtDonationTestSoon     = common.NewMessage("Wait a minute before testing again")
 	errWtDonationTestLimit    = common.NewMessage("This account has reached today's test limit")
+	errWtAisConsent           = common.NewMessage("Accept the risks before donating an account")
+	errWtAisUsage             = common.NewMessage("Usage is not available for this pool")
+	wtAisTestOK               = "The pool can still use this account"
+	wtAisTestFailed           = "The pool can no longer sign in with this account"
 )
 
 // wtDonationFlowPayload is the server-side state of one authorization, kept
@@ -53,13 +62,37 @@ type wtDonationFlowPayload struct {
 	PoolBefore []string `json:"pool_before"`
 }
 
-// wtDonationReady answers the disabled message unless the site is wired to a pool.
+// wtDonationReady answers the disabled message unless the site is wired to a
+// CPA pool.
 func wtDonationReady(c *gin.Context) bool {
 	if service.WtDonationEnabled() {
 		return true
 	}
 	common.ApiError(c, errWtDonationDisabled)
 	return false
+}
+
+// wtDonationProviderReady answers the disabled message of the donation's
+// pool unless that pool is configured.
+func wtDonationProviderReady(c *gin.Context, donation *model.WtDonation) bool {
+	if donation.Provider == model.WtAisProvider {
+		return wtAisReady(c)
+	}
+	return wtDonationReady(c)
+}
+
+// wtProviderOf reads the provider query of the list, Antigravity unless AI
+// Studio is asked for, and checks that its pool is configured.
+func wtProviderOf(c *gin.Context) (string, bool) {
+	provider := c.DefaultQuery("provider", service.WtDonationProvider)
+	switch provider {
+	case service.WtDonationProvider:
+		return provider, wtDonationReady(c)
+	case model.WtAisProvider:
+		return provider, wtAisReady(c)
+	}
+	common.ApiErrorT(c, "Invalid parameters")
+	return "", false
 }
 
 // wtDonationOf loads the donation named by :id for the signed-in member.
@@ -106,7 +139,7 @@ func WtStartDonation(c *gin.Context) {
 			common.ApiError(c, err)
 			return
 		}
-		if donation.Status != model.WtDonationActive && donation.Status != model.WtDonationFailed {
+		if donation.Provider != service.WtDonationProvider || (donation.Status != model.WtDonationActive && donation.Status != model.WtDonationFailed) {
 			common.ApiError(c, model.ErrWtDonationNotFound)
 			return
 		}
@@ -118,7 +151,7 @@ func WtStartDonation(c *gin.Context) {
 			return
 		}
 		email = normalized
-		slots, err := model.CountWtDonationSlots(identity.UserID)
+		slots, err := model.CountWtDonationSlots(identity.UserID, service.WtDonationProvider)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -127,7 +160,7 @@ func WtStartDonation(c *gin.Context) {
 			common.ApiError(c, model.ErrWtDonationLimit)
 			return
 		}
-		inPool, err := model.WtDonationEmailInPool(email)
+		inPool, err := model.WtDonationEmailInPool(email, service.WtDonationProvider, 0)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -297,26 +330,107 @@ func WtSubmitDonationCallback(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{"id": donation.Id, "status": model.WtDonationVerifying})
 }
 
-// wtDonationItem is one row of the member's list (wind-tide/API.md §14).
-// pool is the credential list by file name; nil means it could not be
-// fetched, which shows as unknown rather than as a missing file.
-func wtDonationItem(donation *model.WtDonation, pool map[string]*service.WtCPACredential, now time.Time) gin.H {
+// WtDonateAistudio hands a pasted AI Studio Cookie to the pool and starts
+// the verification that reads the account's email. The Cookie is parsed for
+// its fingerprint, sent once and forgotten; the site keeps the pool's
+// account id only.
+func WtDonateAistudio(c *gin.Context) {
+	if !wtAisReady(c) {
+		return
+	}
+	identity, ok := middleware.GetSessionAuthIdentity(c)
+	if !ok {
+		common.ApiError(c, errWtDonationSession)
+		return
+	}
+	var input struct {
+		Cookies  string `json:"cookies"`
+		Accepted bool   `json:"accepted"`
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, wtAisDonateBodyMax)
+	if err := common.DecodeJson(c.Request.Body, &input); err != nil {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"))
+		return
+	}
+	if !input.Accepted {
+		common.ApiErrorStatus(c, http.StatusBadRequest, errWtAisConsent)
+		return
+	}
+	if len(input.Cookies) > service.WtAisCookieMaxBytes {
+		common.ApiErrorStatus(c, http.StatusBadRequest, model.ErrWtAisCookie)
+		return
+	}
+	header, fingerprint, ok := service.WtAisParseCookies(input.Cookies)
+	if !ok {
+		common.ApiErrorStatus(c, http.StatusBadRequest, model.ErrWtAisCookie)
+		return
+	}
+	claimed, err := model.WtAisFingerprintInPool(fingerprint)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if claimed {
+		common.ApiError(c, model.ErrWtDonationDuplicate)
+		return
+	}
+	slots, err := model.CountWtDonationSlots(identity.UserID, model.WtAisProvider)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if slots >= model.WtAisMaxPerUser {
+		common.ApiError(c, model.ErrWtDonationLimit)
+		return
+	}
+	audit := map[string]any{"id": 0, "provider": model.WtAisProvider, "success": false}
+	accountID, err := service.WtAisImportCookies(c.Request.Context(), header, identity.UserID)
+	if err != nil {
+		recordUserSecurityAudit(c, identity.UserID, "wt.donation_add", audit)
+		if errors.Is(err, model.ErrWtAisCookie) {
+			common.ApiErrorStatus(c, http.StatusBadRequest, err)
+			return
+		}
+		common.ApiErrorStatus(c, http.StatusBadGateway, err)
+		return
+	}
+	donation, err := model.CreateWtAisDonation(identity.UserID, accountID, fingerprint)
+	if err != nil {
+		if deleteErr := service.WtAisDeleteAccount(c.Request.Context(), accountID); deleteErr != nil {
+			common.SysError(common.LogText("wt ais: an imported account of member %d could not be deleted from the pool after a database error", identity.UserID))
+		}
+		recordUserSecurityAudit(c, identity.UserID, "wt.donation_add", audit)
+		common.ApiError(c, err)
+		return
+	}
+	service.WtStartAisVerification(service.WtAisVerifyJob{
+		DonationID:  donation.Id,
+		UserID:      identity.UserID,
+		AccountID:   accountID,
+		DisplayName: model.WtDisplayNameOfUser(identity.UserID),
+	})
+	audit["id"], audit["success"] = donation.Id, true
+	recordUserSecurityAudit(c, identity.UserID, "wt.donation_add", audit)
+	c.JSON(http.StatusAccepted, gin.H{
+		"success": true,
+		"message": "",
+		"data":    gin.H{"id": donation.Id, "status": model.WtDonationVerifying},
+	})
+}
+
+// wtDonationItem is one row of the member's list (wind-tide/API.md §14 and
+// §15); pool is the live state of the account, nil when there is none.
+func wtDonationItem(donation *model.WtDonation, pool any) gin.H {
 	item := gin.H{
 		"id":          donation.Id,
+		"provider":    donation.Provider,
 		"email":       donation.Email,
 		"status":      donation.Status,
 		"fail_reason": donation.FailReason,
-		"pool":        nil,
+		"pool":        pool,
 		"last_test":   nil,
 		"created_at":  donation.CreatedAt,
 		"verified_at": donation.VerifiedAt,
-	}
-	if donation.Status == model.WtDonationActive {
-		if pool == nil {
-			item["pool"] = service.WtPoolInfo{State: service.WtPoolUnknown}
-		} else {
-			item["pool"] = service.WtPoolStateOf(pool[donation.CredentialName], now)
-		}
 	}
 	if donation.LastTestAt != 0 {
 		item["last_test"] = gin.H{
@@ -329,22 +443,51 @@ func wtDonationItem(donation *model.WtDonation, pool map[string]*service.WtCPACr
 	return item
 }
 
-// WtListDonations is the member's donations, newest first, with the live
-// state of the active ones from one cached credential list.
+// wtDonationPoolOf is the live state of an active donation's account: from
+// the credential list for Antigravity, where an unreachable pool shows as
+// unknown rather than as a missing file, and from the rotation table for AI
+// Studio, where an unreachable pool shows nothing.
+func wtDonationPoolOf(donation *model.WtDonation, pool map[string]*service.WtCPACredential, rotation map[string]*service.WtAisRotationEntry, now time.Time) any {
+	if donation.Status != model.WtDonationActive {
+		return nil
+	}
+	if donation.Provider == model.WtAisProvider {
+		if rotation == nil {
+			return nil
+		}
+		return service.WtAisPoolStateOf(rotation[donation.CredentialName], now)
+	}
+	if pool == nil {
+		return service.WtPoolInfo{State: service.WtPoolUnknown}
+	}
+	return service.WtPoolStateOf(pool[donation.CredentialName], now)
+}
+
+// WtListDonations is the member's donations to one pool, newest first, with
+// the live state of the active ones from one cached pool listing.
 func WtListDonations(c *gin.Context) {
-	if !wtDonationReady(c) {
+	provider, ok := wtProviderOf(c)
+	if !ok {
 		return
 	}
-	donations, err := model.ListWtDonations(c.GetInt("id"))
+	donations, err := model.ListWtDonations(c.GetInt("id"), provider)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	var pool map[string]*service.WtCPACredential
 	anyActive := slices.ContainsFunc(donations, func(donation *model.WtDonation) bool {
 		return donation.Status == model.WtDonationActive
 	})
-	if anyActive {
+	var pool map[string]*service.WtCPACredential
+	var rotation map[string]*service.WtAisRotationEntry
+	maxSlots := model.WtDonationMaxPerUser
+	switch {
+	case provider == model.WtAisProvider:
+		maxSlots = model.WtAisMaxPerUser
+		if anyActive {
+			rotation, _ = service.WtAisRotation(c.Request.Context())
+		}
+	case anyActive:
 		if list, err := service.WtPoolCredentials(c.Request.Context()); err == nil {
 			pool = make(map[string]*service.WtCPACredential, len(list))
 			for i := range list {
@@ -355,15 +498,15 @@ func WtListDonations(c *gin.Context) {
 	now := model.WtNow()
 	items := make([]gin.H, 0, len(donations))
 	for _, donation := range donations {
-		items = append(items, wtDonationItem(donation, pool, now))
+		items = append(items, wtDonationItem(donation, wtDonationPoolOf(donation, pool, rotation, now)))
 	}
-	common.ApiSuccess(c, gin.H{"max": model.WtDonationMaxPerUser, "items": items})
+	common.ApiSuccess(c, gin.H{"max": maxSlots, "items": items})
 }
 
 // WtGetDonation is the progress of one donation; the dialog polls it while
 // the verification runs. It reads the database only.
 func WtGetDonation(c *gin.Context) {
-	if !wtDonationReady(c) {
+	if !wtPoolReady(c) {
 		return
 	}
 	donation, ok := wtDonationOf(c)
@@ -372,20 +515,28 @@ func WtGetDonation(c *gin.Context) {
 	}
 	common.ApiSuccess(c, gin.H{
 		"id":          donation.Id,
+		"provider":    donation.Provider,
 		"email":       donation.Email,
 		"status":      donation.Status,
 		"fail_reason": donation.FailReason,
 	})
 }
 
-// WtGetDonationUsage is the remaining allowance of an active donation, at
-// most a minute old.
+// WtGetDonationUsage is the remaining allowance of an active Antigravity
+// donation, at most a minute old; the AI Studio pool has no usage figure.
 func WtGetDonationUsage(c *gin.Context) {
-	if !wtDonationReady(c) {
+	if !wtPoolReady(c) {
 		return
 	}
 	donation, ok := wtDonationOf(c)
 	if !ok {
+		return
+	}
+	if donation.Provider == model.WtAisProvider {
+		common.ApiErrorStatus(c, http.StatusNotFound, errWtAisUsage)
+		return
+	}
+	if !wtDonationReady(c) {
 		return
 	}
 	if donation.Status != model.WtDonationActive {
@@ -400,11 +551,13 @@ func WtGetDonationUsage(c *gin.Context) {
 	common.ApiSuccess(c, usage)
 }
 
-// WtTestDonation asks Google for the account's allowance afresh, records the
+// WtTestDonation checks that the pool can still use the account, records the
 // attempt with its latency, and holds each account to one test a minute and
-// twenty a Beijing day. Google failing is a recorded failure, not an error.
+// twenty a Beijing day. An Antigravity account is asked for its allowance
+// afresh, an AI Studio account for its signed-in email; the pool failing is
+// a recorded failure, not an error.
 func WtTestDonation(c *gin.Context) {
-	if !wtDonationReady(c) {
+	if !wtPoolReady(c) {
 		return
 	}
 	identity, ok := middleware.GetSessionAuthIdentity(c)
@@ -414,6 +567,9 @@ func WtTestDonation(c *gin.Context) {
 	}
 	donation, ok := wtDonationOf(c)
 	if !ok {
+		return
+	}
+	if !wtDonationProviderReady(c, donation) {
 		return
 	}
 	if donation.Status != model.WtDonationActive {
@@ -435,31 +591,44 @@ func WtTestDonation(c *gin.Context) {
 		return
 	}
 	began := time.Now()
-	usage, detail, err := service.WtDonationUsage(c.Request.Context(), donation, true)
-	latency := int(time.Since(began).Milliseconds())
-	message := ""
-	if err != nil {
-		message = cmp.Or(detail, err.Error())
+	var usage *service.WtUsage
+	passed, message := false, ""
+	if donation.Provider == model.WtAisProvider {
+		outcome, _, err := service.WtAisDetectEmail(c.Request.Context(), donation.CredentialName)
+		passed = err == nil && outcome == service.WtAisDetectOK
+		message = wtAisTestFailed
+		if passed {
+			message = wtAisTestOK
+		}
+	} else {
+		var detail string
+		var err error
+		usage, detail, err = service.WtDonationUsage(c.Request.Context(), donation, true)
+		passed = err == nil
+		if err != nil {
+			message = cmp.Or(detail, err.Error())
+		}
 	}
-	if recordErr := model.RecordWtDonationTest(donation.Id, err == nil, latency, message, day, testsToday+1); recordErr != nil {
+	latency := int(time.Since(began).Milliseconds())
+	if recordErr := model.RecordWtDonationTest(donation.Id, passed, latency, message, day, testsToday+1); recordErr != nil {
 		common.ApiError(c, recordErr)
 		return
 	}
 	recordUserSecurityAudit(c, identity.UserID, "wt.donation_test", map[string]any{
 		"id":         donation.Id,
-		"provider":   service.WtDonationProvider,
-		"success":    err == nil,
+		"provider":   donation.Provider,
+		"success":    passed,
 		"latency_ms": latency,
 	})
-	common.ApiSuccess(c, gin.H{"ok": err == nil, "latency_ms": latency, "message": message, "usage": usage})
+	common.ApiSuccess(c, gin.H{"ok": passed, "latency_ms": latency, "message": message, "usage": usage})
 }
 
-// WtRemoveDonation takes the account out of the pool and closes the
+// WtRemoveDonation takes the account out of its pool and closes the
 // donation. One submitted less than ten minutes ago is left to the verifier,
 // so the two do not race; the record stays when the pool could not delete
-// the file.
+// the account. The pool page announces the removal of an active account.
 func WtRemoveDonation(c *gin.Context) {
-	if !wtDonationReady(c) {
+	if !wtPoolReady(c) {
 		return
 	}
 	identity, ok := middleware.GetSessionAuthIdentity(c)
@@ -479,20 +648,41 @@ func WtRemoveDonation(c *gin.Context) {
 		common.ApiError(c, errWtDonationVerifying)
 		return
 	}
-	audit := map[string]any{"id": donation.Id, "provider": service.WtDonationProvider, "success": false}
+	if !wtDonationProviderReady(c, donation) {
+		return
+	}
+	audit := map[string]any{"id": donation.Id, "provider": donation.Provider, "success": false}
 	if donation.CredentialName != "" {
-		if err := service.WtCPADeleteCredential(c.Request.Context(), donation.CredentialName); err != nil {
+		var err error
+		if donation.Provider == model.WtAisProvider {
+			err = service.WtAisDeleteAccount(c.Request.Context(), donation.CredentialName)
+		} else {
+			err = service.WtCPADeleteCredential(c.Request.Context(), donation.CredentialName)
+		}
+		if err != nil {
 			recordUserSecurityAudit(c, identity.UserID, "wt.donation_remove", audit)
 			common.ApiError(c, err)
 			return
 		}
 	}
+	wasActive := donation.Status == model.WtDonationActive
 	if err := model.RemoveWtDonation(donation.Id); err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	service.WtForgetDonationUsage(donation.Id)
-	service.WtForgetPoolCredentials()
+	kind := model.WtPoolEventAntigravityRemoved
+	if donation.Provider == model.WtAisProvider {
+		kind = model.WtPoolEventAisRemoved
+		service.WtForgetAisRotation()
+	} else {
+		service.WtForgetCredentialUsage(donation.AuthIndex)
+		service.WtForgetPoolCredentials()
+	}
+	if wasActive {
+		if err := model.WtInsertPoolEvent(kind, donation.Provider, identity.UserID, model.WtDisplayNameOfUser(identity.UserID), 1, ""); err != nil {
+			common.SysError(common.LogText("wt donation: the announcement of removed donation %d was not saved: %s", donation.Id, err.Error()))
+		}
+	}
 	audit["success"] = true
 	recordUserSecurityAudit(c, identity.UserID, "wt.donation_remove", audit)
 	common.ApiSuccessT(c, "Donation removed", nil)

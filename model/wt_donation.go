@@ -9,9 +9,10 @@ import (
 	"gorm.io/gorm"
 )
 
-// wind-tide: the ledger of donated Antigravity accounts (wind-tide/API.md
-// §14): which member donated which credential of the CPA account pool. The
-// Google tokens themselves live only in CPA.
+// wind-tide: the ledger of donated accounts: which member donated which
+// credential of the CPA account pool (Antigravity, wind-tide/API.md §14) or
+// which account of the aistudio-api pool (AI Studio, §15 and wt_ais.go). The
+// Google tokens and cookies themselves live only in the pools.
 
 const (
 	AuthFlowPurposeWtDonation = "wt_donation"
@@ -89,27 +90,28 @@ func WtNormalizeDonationEmail(raw string) (string, bool) {
 	return email, true
 }
 
-// CountWtDonationSlots counts the donations of a member that take one of the
-// WtDonationMaxPerUser slots: the verifying and the active ones.
-func CountWtDonationSlots(userID int) (int64, error) {
+// CountWtDonationSlots counts the donations of a member to one pool that
+// take one of its slots: the verifying and the active ones. Each provider
+// has its own ten slots.
+func CountWtDonationSlots(userID int, provider string) (int64, error) {
 	var count int64
-	err := DB.Model(&WtDonation{}).Where("user_id = ? AND status IN ?", userID, wtDonationSlotStates).Count(&count).Error
+	err := DB.Model(&WtDonation{}).Where("user_id = ? AND provider = ? AND status IN ?", userID, provider, wtDonationSlotStates).Count(&count).Error
 	return count, err
 }
 
 // WtDonationEmailInPool reports whether any member has a verifying or active
-// donation of email.
-func WtDonationEmailInPool(email string) (bool, error) {
+// donation of email in the provider's pool, other than exceptID.
+func WtDonationEmailInPool(email, provider string, exceptID int) (bool, error) {
 	var count int64
-	err := DB.Model(&WtDonation{}).Where("email = ? AND status IN ?", email, wtDonationSlotStates).Count(&count).Error
+	err := DB.Model(&WtDonation{}).Where("email = ? AND provider = ? AND id <> ? AND status IN ?", email, provider, exceptID, wtDonationSlotStates).Count(&count).Error
 	return count > 0, err
 }
 
 // WtDonationCredentialClaimed reports whether a verifying or active donation
-// other than exceptID already refers to the credential file name.
-func WtDonationCredentialClaimed(name string, exceptID int) (bool, error) {
+// of the provider other than exceptID already refers to the credential name.
+func WtDonationCredentialClaimed(name, provider string, exceptID int) (bool, error) {
 	var count int64
-	err := DB.Model(&WtDonation{}).Where("credential_name = ? AND id <> ? AND status IN ?", name, exceptID, wtDonationSlotStates).Count(&count).Error
+	err := DB.Model(&WtDonation{}).Where("credential_name = ? AND provider = ? AND id <> ? AND status IN ?", name, provider, exceptID, wtDonationSlotStates).Count(&count).Error
 	return count > 0, err
 }
 
@@ -123,18 +125,19 @@ func GetWtDonation(id, userID int) (*WtDonation, error) {
 	return &donation, nil
 }
 
-// ListWtDonations lists a member's donations that are not removed, newest first.
-func ListWtDonations(userID int) ([]*WtDonation, error) {
+// ListWtDonations lists a member's donations to one pool that are not
+// removed, newest first.
+func ListWtDonations(userID int, provider string) ([]*WtDonation, error) {
 	var donations []*WtDonation
-	err := DB.Where("user_id = ? AND status <> ?", userID, WtDonationRemoved).Order("created_at DESC, id DESC").Find(&donations).Error
+	err := DB.Where("user_id = ? AND provider = ? AND status <> ?", userID, provider, WtDonationRemoved).Order("created_at DESC, id DESC").Find(&donations).Error
 	return donations, err
 }
 
-// ListVerifyingWtDonations lists every donation still being verified, for
-// the pass a restarted server makes over them.
-func ListVerifyingWtDonations() ([]*WtDonation, error) {
+// ListVerifyingWtDonations lists every donation to one pool still being
+// verified, for the pass a restarted server makes over them.
+func ListVerifyingWtDonations(provider string) ([]*WtDonation, error) {
 	var donations []*WtDonation
-	err := DB.Where("status = ?", WtDonationVerifying).Order("id ASC").Find(&donations).Error
+	err := DB.Where("provider = ? AND status = ?", provider, WtDonationVerifying).Order("id ASC").Find(&donations).Error
 	return donations, err
 }
 

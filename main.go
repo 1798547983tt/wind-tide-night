@@ -140,6 +140,17 @@ func main() {
 	// (wind-tide/API.md §14).
 	service.StartWtDonationVerifyTask()
 
+	// wind-tide: the AIS playground pool (wind-tide/API.md §15): the site
+	// owns the AIS channel, group and ratios, settles the AI Studio accounts a
+	// restart left verifying and keeps the Antigravity level snapshot fresh.
+	if common.IsMasterNode {
+		if err := service.WtEnsureAisChannel(); err != nil {
+			common.SysError(common.LogText("wt ais: the AIS channel could not be prepared: %s", err.Error()))
+		}
+	}
+	service.StartWtAisVerifyTask()
+	service.StartWtPoolLevelTask()
+
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
 

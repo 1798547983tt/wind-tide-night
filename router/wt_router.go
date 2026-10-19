@@ -7,8 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// wind-tide: the fork's routes under /api/wt (wind-tide/API.md §4, §5 and
-// §7–§9 and §14). Every dashboard route is also declared in
+// wind-tide: the fork's routes under /api/wt (wind-tide/API.md §4, §5,
+// §7–§9, §14 and §15). Every dashboard route is also declared in
 // middleware/access_token_routes.go.
 func setWtRoutes(apiRouter *gin.RouterGroup) {
 	wtRoute := apiRouter.Group("/wt")
@@ -44,5 +44,20 @@ func setWtRoutes(apiRouter *gin.RouterGroup) {
 		donationRoute.GET("/:id/usage", controller.WtGetDonationUsage)
 		donationRoute.POST("/:id/test", middleware.UserCriticalRateLimit("wt-donation-test"), controller.WtTestDonation)
 		donationRoute.POST("/:id/remove", middleware.UserCriticalRateLimit("wt-donation"), controller.WtRemoveDonation)
+		// wind-tide: donated AI Studio accounts (wind-tide/API.md §15) share
+		// the list, the single-row routes and the write limit.
+		donationRoute.POST("/aistudio", middleware.UserCriticalRateLimit("wt-donation"), controller.WtDonateAistudio)
+	}
+
+	// wind-tide: the pool page (wind-tide/API.md §15). Members only, browser
+	// sessions only; giving and taking share the donation write limit.
+	poolRoute := wtRoute.Group("/pool")
+	poolRoute.Use(middleware.DisableCache(), middleware.UserAuth())
+	{
+		poolRoute.GET("", controller.WtGetPool)
+		poolRoute.GET("/events", controller.WtListPoolEvents)
+		poolRoute.GET("/ais/leaderboard", controller.WtGetAisLeaderboard)
+		poolRoute.POST("/ais/give", middleware.UserCriticalRateLimit("wt-donation"), controller.WtGiveAisCalls)
+		poolRoute.POST("/ais/take", middleware.UserCriticalRateLimit("wt-donation"), controller.WtTakeAisCalls)
 	}
 }

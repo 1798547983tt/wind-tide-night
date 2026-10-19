@@ -66,7 +66,7 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundRouter.Use(middleware.SystemPerformanceCheck())
 	// wind-tide: playground calls count against the model rate limit
 	// (wind-tide/API.md §10).
-	playgroundRouter.Use(middleware.UserAuth(), middleware.ModelRequestRateLimit(), middleware.Distribute())
+	playgroundRouter.Use(middleware.UserAuth(), middleware.ModelRequestRateLimit(), middleware.Distribute(), middleware.WtAisGate()) // wind-tide: AIS PG pool gate
 	{
 		playgroundRouter.POST("/chat/completions", controller.Playground)
 	}
@@ -83,7 +83,7 @@ func SetRelayRouter(router *gin.Engine) {
 	{
 		// WebSocket 路由（统一到 Relay）
 		wsRouter := relayV1Router.Group("")
-		wsRouter.Use(middleware.Distribute())
+		wsRouter.Use(middleware.Distribute(), middleware.WtAisGate()) // wind-tide: AIS PG pool gate
 		wsRouter.GET("/realtime", func(c *gin.Context) {
 			controller.Relay(c, types.RelayFormatOpenAIRealtime)
 		})
@@ -91,7 +91,7 @@ func SetRelayRouter(router *gin.Engine) {
 	{
 		//http router
 		httpRouter := relayV1Router.Group("")
-		httpRouter.Use(middleware.Distribute())
+		httpRouter.Use(middleware.Distribute(), middleware.WtAisGate()) // wind-tide: AIS PG pool gate
 
 		// claude related routes
 		// TODO: /messages/count_tokens is disabled. The current controller.CountClaudeTokens
@@ -199,7 +199,7 @@ func SetRelayRouter(router *gin.Engine) {
 	relayGeminiRouter.Use(middleware.SystemPerformanceCheck())
 	relayGeminiRouter.Use(middleware.TokenAuth())
 	relayGeminiRouter.Use(middleware.ModelRequestRateLimit())
-	relayGeminiRouter.Use(middleware.Distribute())
+	relayGeminiRouter.Use(middleware.Distribute(), middleware.WtAisGate()) // wind-tide: AIS PG pool gate
 	{
 		// Gemini API 路径格式: /v1beta/models/{model_name}:{action}
 		relayGeminiRouter.POST("/models/*path", func(c *gin.Context) {
@@ -213,8 +213,8 @@ func registerMjRouterGroup(relayMjRouter *gin.RouterGroup) {
 	relayMjRouter.Use(middleware.TokenAuth())
 	// wind-tide: submissions count against the model rate limit, task reads
 	// do not (wind-tide/API.md §10).
-	relayMjSubmitRouter := relayMjRouter.Group("", middleware.ModelRequestRateLimit(), middleware.Distribute())
-	relayMjRouter.Use(middleware.Distribute())
+	relayMjSubmitRouter := relayMjRouter.Group("", middleware.ModelRequestRateLimit(), middleware.Distribute(), middleware.WtAisGate()) // wind-tide: AIS PG pool gate
+	relayMjRouter.Use(middleware.Distribute(), middleware.WtAisGate())                                                                  // wind-tide: AIS PG pool gate
 	{
 		relayMjSubmitRouter.POST("/submit/action", controller.RelayMidjourney)
 		relayMjSubmitRouter.POST("/submit/shorten", controller.RelayMidjourney)

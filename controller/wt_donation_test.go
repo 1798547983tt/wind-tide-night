@@ -27,7 +27,8 @@ import (
 )
 
 // wind-tide: regression tests of donated Antigravity accounts (wind-tide/API.md
-// §14) against a scripted stand-in for CPA's management API.
+// §14) against a scripted stand-in for CPA's management API. The AI Studio
+// pool and the pool page are covered in wt_pool_test.go.
 
 // The CPA client sends the management key, treats redirects, 401s and
 // oversized bodies as "pool unavailable" and recognizes a forgotten state.
@@ -109,22 +110,42 @@ func TestWtDonationLedgerQueries(t *testing.T) {
 		removed := seed(donor.Id, "d@example.com", model.WtDonationRemoved, 400)
 		seed(other.Id, "e@example.com", model.WtDonationActive, 500)
 
-		slots, err := model.CountWtDonationSlots(donor.Id)
+		// The same address donated to the AI Studio pool is another ledger:
+		// it takes none of the Antigravity slots and claims nothing there.
+		aistudio := &model.WtDonation{UserId: donor.Id, Provider: model.WtAisProvider, Email: "a@example.com", Status: model.WtDonationActive, CredentialName: "ais-acc-1", AuthIndex: "fp-1", CreatedAt: 600, UpdatedAt: 600}
+		require.NoError(t, model.DB.Create(aistudio).Error)
+
+		slots, err := model.CountWtDonationSlots(donor.Id, "antigravity")
 		require.NoError(t, err)
 		assert.EqualValues(t, 2, slots)
+		slots, err = model.CountWtDonationSlots(donor.Id, model.WtAisProvider)
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, slots)
 
 		for email, expected := range map[string]bool{"a@example.com": true, "b@example.com": true, "c@example.com": false, "d@example.com": false, "e@example.com": true} {
-			inPool, err := model.WtDonationEmailInPool(email)
+			inPool, err := model.WtDonationEmailInPool(email, "antigravity", 0)
 			require.NoError(t, err)
 			assert.Equal(t, expected, inPool, email)
 		}
+		inPool, err := model.WtDonationEmailInPool("a@example.com", model.WtAisProvider, 0)
+		require.NoError(t, err)
+		assert.True(t, inPool)
+		inPool, err = model.WtDonationEmailInPool("a@example.com", model.WtAisProvider, aistudio.Id)
+		require.NoError(t, err)
+		assert.False(t, inPool, "a donation does not conflict with itself")
+		inPool, err = model.WtDonationEmailInPool("b@example.com", model.WtAisProvider, 0)
+		require.NoError(t, err)
+		assert.False(t, inPool, "an Antigravity donation is not in the AI Studio pool")
 
-		claimed, err := model.WtDonationCredentialClaimed("antigravity-a@example.com.json", verifying)
+		claimed, err := model.WtDonationCredentialClaimed("antigravity-a@example.com.json", "antigravity", verifying)
 		require.NoError(t, err)
 		assert.True(t, claimed)
-		claimed, err = model.WtDonationCredentialClaimed("antigravity-a@example.com.json", active)
+		claimed, err = model.WtDonationCredentialClaimed("antigravity-a@example.com.json", "antigravity", active)
 		require.NoError(t, err)
 		assert.False(t, claimed, "a donation does not conflict with itself")
+		claimed, err = model.WtDonationCredentialClaimed("ais-acc-1", "antigravity", 0)
+		require.NoError(t, err)
+		assert.False(t, claimed, "pools do not share credential names")
 
 		_, err = model.GetWtDonation(active, other.Id)
 		assert.ErrorIs(t, err, model.ErrWtDonationNotFound)
@@ -132,13 +153,17 @@ func TestWtDonationLedgerQueries(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "a@example.com", mine.Email)
 
-		listed, err := model.ListWtDonations(donor.Id)
+		listed, err := model.ListWtDonations(donor.Id, "antigravity")
 		require.NoError(t, err)
 		ids := make([]int, 0, len(listed))
 		for _, donation := range listed {
 			ids = append(ids, donation.Id)
 		}
-		assert.Equal(t, []int{failed, verifying, active}, ids, "newest first, removed hidden")
+		assert.Equal(t, []int{failed, verifying, active}, ids, "newest first, removed hidden, other pools hidden")
+		pending, err := model.ListVerifyingWtDonations("antigravity")
+		require.NoError(t, err)
+		require.Len(t, pending, 1)
+		assert.Equal(t, verifying, pending[0].Id)
 
 		assert.ErrorIs(t, model.FailWtDonation(removed, "late"), model.ErrWtDonationNotFound)
 		assert.Equal(t, model.WtDonationRemoved, wtDonationRow(t, removed).Status)
@@ -217,6 +242,7 @@ type wtFakeCPA struct {
 	notes        map[string]string
 	deleted      []string
 	quotaBody    string
+	quotaByIndex map[string]string // quota bodies per auth index, over quotaBody
 	tierBody     string
 	down         bool
 	requests     []string
@@ -320,6 +346,9 @@ func (fake *wtFakeCPA) handle(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(fake.t, "Bearer $TOKEN$", header["Authorization"])
 		assert.NotEmpty(fake.t, body["authIndex"])
 		answer := fake.quotaBody
+		if authIndex, _ := body["authIndex"].(string); fake.quotaByIndex[authIndex] != "" {
+			answer = fake.quotaByIndex[authIndex]
+		}
 		if strings.Contains(target, "loadCodeAssist") {
 			answer = fake.tierBody
 		}
@@ -571,6 +600,14 @@ func TestWtDonationCallbackBindsTheCredential(t *testing.T) {
 		assert.Equal(t, fmt.Sprintf("donor:%d", member.Id), fake.notes["antigravity-someone@example.com.json"])
 		_, err := model.GetAuthFlow(started.FlowToken, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeWtDonation})
 		assert.ErrorIs(t, err, model.ErrAuthFlowConsumed)
+		events, err := model.WtListPoolEvents(0, 10)
+		require.NoError(t, err)
+		require.Len(t, events, 1, "the pool page announces the donation")
+		assert.Equal(t, model.WtPoolEventAntigravityDonated, events[0].Kind)
+		assert.Equal(t, "antigravity", events[0].Provider)
+		assert.Equal(t, "donor", events[0].DisplayName)
+		assert.Equal(t, 1, events[0].Amount)
+		assert.Equal(t, wtDonationClock.Unix(), events[0].CreatedAt)
 	})
 }
 
@@ -813,6 +850,7 @@ type wtListReply struct {
 	Max   int `json:"max"`
 	Items []struct {
 		ID         int                 `json:"id"`
+		Provider   string              `json:"provider"`
 		Email      string              `json:"email"`
 		Status     string              `json:"status"`
 		FailReason string              `json:"fail_reason"`
@@ -887,6 +925,7 @@ func TestWtDonationListShowsThePoolState(t *testing.T) {
 			emails = append(emails, item.Email)
 		}
 		assert.Equal(t, []string{"failed@example.com", "gone@example.com", "cooling@example.com", "fine@example.com"}, emails, "newest first")
+		assert.Equal(t, "antigravity", list.Items[0].Provider)
 		assert.Nil(t, list.Items[0].Pool)
 		assert.Equal(t, service.WtDonationFailDenied, list.Items[0].FailReason)
 		require.NotNil(t, list.Items[1].Pool)
@@ -1093,11 +1132,18 @@ func TestWtDonationRemoveDeletesTheCredential(t *testing.T) {
 		assert.Equal(t, model.WtDonationRemoved, wtDonationRow(t, stale.Id).Status)
 
 		// Past the grace period a stuck verification can be removed; it has
-		// no credential, so the pool is not asked.
+		// no credential, so the pool is not asked, and it was never in the
+		// pool, so nothing is announced.
 		pinWtClock(t, wtDonationClock.Add(11*time.Minute))
 		deletes := fake.requestsOf("DELETE /v8/management/credentials")
 		require.True(t, remove(verifying.Id).Success)
 		assert.Equal(t, deletes, fake.requestsOf("DELETE /v8/management/credentials"))
+		events, err := model.WtListPoolEvents(0, 10)
+		require.NoError(t, err)
+		require.Len(t, events, 2, "the two active accounts were announced as removed")
+		assert.Equal(t, model.WtPoolEventAntigravityRemoved, events[0].Kind)
+		assert.Equal(t, model.WtPoolEventAntigravityRemoved, events[1].Kind)
+		assert.Equal(t, "donor", events[0].DisplayName)
 
 		list := wtListDonations(t, session)
 		require.Len(t, list.Items, 1)

@@ -130,6 +130,10 @@ var wtModels = []any{
 	&WtEmergencyToken{},
 	// wind-tide: donated Antigravity accounts (wind-tide/API.md §14).
 	&WtDonation{},
+	// wind-tide: the AIS playground pool (wind-tide/API.md §15).
+	&WtAisLedger{},
+	&WtAisPool{},
+	&WtPoolEvent{},
 }
 
 // WtValidDiscordID reports whether id has the shape of a Discord user ID.
