@@ -28,6 +28,11 @@ services:
       # page (wind-tide/API.md §14). Both empty = feature hidden.
       WT_CPA_URL: ${WT_CPA_URL:-}
       WT_CPA_MANAGEMENT_KEY: ${WT_CPA_MANAGEMENT_KEY:-}
+      # Optional: the aistudio-api pool behind the AIS playground tab and the
+      # pool page (wind-tide/API.md §15). All three empty = feature hidden.
+      WT_AIS_URL: ${WT_AIS_URL:-}
+      WT_AIS_PASSWORD: ${WT_AIS_PASSWORD:-}
+      WT_AIS_API_KEY: ${WT_AIS_API_KEY:-}
       # Caddy is the only proxy in front of the site; trust its network only.
       TRUSTED_PROXIES: 10.255.250.0/24
       ERROR_LOG_ENABLED: 'true'

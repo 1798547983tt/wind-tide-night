@@ -196,3 +196,79 @@ docker compose start site
 3. 验证：`curl -s https://<域名>/api/status` 里 `wt_donation_enabled` 为 `true`；登录后侧栏「个人」里出现「捐赠账号」；打开页面不报"无法连接号池"。
 4. 页面报号池不可用时，先看 `docker compose logs --tail 100 site` 里有没有 CPA 返回 401 的记录，**不要反复刷新**：CPA 对错误密钥有 5 次/30 分钟的封禁，封禁期间正确的密钥也会被拒。
 5. 回退：删掉 `.env` 里这两行，`docker compose up -d site`。功能隐藏，表 `wt_donations` 留着无害。
+
+## 10. 接入 AIS playground 号池（可选）
+
+AIS playground 标签和「算力池」页面要连一个同机部署的 aistudio-api（下称 AIS），它用一个受控浏览器拿成员捐的 Google AI Studio 登录 Cookie 去调模型。接口约定见 `API.md` §15。
+
+### 10.1 部署 AIS 本身
+
+放在 `/opt/aistudio-api`，和站点同一个 Docker 网络（`wind-tide_edge`），不发布任何端口。`compose.yaml` 的要点（镜像请按 digest 固定，升级时改 digest 再 `docker compose up -d`）：
+
+```yaml
+services:
+  aistudio-api:
+    image: ghcr.io/deconstructedcube/aistudio-api:latest@sha256:<digest>
+    restart: unless-stopped
+    env_file: .env                      # 只放 AISTUDIO_WEB_PASSWORD=<控制台密码>
+    environment:
+      AISTUDIO_DATA_DIR: /app/data
+      AISTUDIO_ACCOUNTS_DIR: /app/data/accounts
+      AISTUDIO_CONFIG_FILE: /app/data/config.yaml
+      AISTUDIO_BROWSER_IDLE_TIMEOUT: "600"   # 10 分钟没请求就关掉浏览器省内存
+    volumes: ["./data:/app/data"]
+    networks: [edge]
+    mem_limit: 768m
+    memswap_limit: 1536m
+    cpus: 1.5
+    shm_size: 256m
+    pids_limit: 512
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+networks:
+  edge:
+    external: true
+    name: wind-tide_edge
+```
+
+1. `openssl rand -hex 24` 生成控制台密码，写进 `.env`（权限 600）。它同时是 AIS 管理接口的密码，站点用它调号池；不要写进任何文档或聊天。
+2. `docker compose up -d`，等 `docker compose ps` 显示 healthy。
+3. 在 AIS 控制台（下一步接入 Caddy 后访问）或用管理接口 `POST /api-keys` 新建一个中转密钥（名字随意，例如 `wind-tide relay`），存到 `/opt/aistudio-api/relay.key`（600）。站点的渠道用它调 AIS。
+4. 服务器内存紧张时（本站 2 GB），上面的 768 MB 上限和 10 分钟空闲回收是必须的；空闲时 AIS 只占 40 MB 左右，开浏览器时会冲到几百 MB。
+
+### 10.2 控制台域名
+
+在站点的 `Caddyfile` 末尾加一个只在服务器上存在的块（仓库里的 `deploy/Caddyfile` 不含它，记在服务器的 `LOCAL-CHANGES.md`），先去 DNS 加 `ais` 的 A 记录指向服务器：
+
+```caddyfile
+ais.example.com {
+    # 和 cpa 块一样的安全响应头
+    @relay path /v1beta/*
+    respond @relay 404          # 中转接口只允许站点容器内网访问
+    handle {
+        reverse_proxy aistudio-api:8080
+    }
+}
+```
+
+`docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile </dev/null`。证书拿到后 `https://ais.example.com/health` 应返回 `{"status":"ok"}`，`/v1beta/models` 应是 404。控制台里能看到成员捐的账号，**不要在控制台手动删账号**：站点以为它们还在；要删就在站点页面上移除。
+
+### 10.3 接到站点
+
+1. `.env` 追加三行（密码来自 `/opt/aistudio-api/.env`，密钥来自 `relay.key`，都不要打印）：
+
+   ```
+   WT_AIS_URL=http://aistudio-api:8080
+   WT_AIS_PASSWORD=<AIS 控制台密码>
+   WT_AIS_API_KEY=<relay.key 的内容>
+   ```
+
+2. `docker compose config | grep WT_AIS_` 确认三个变量进了 `site`，再 `docker compose pull site && docker compose up -d site`。
+3. 验证：`curl -s https://<域名>/api/status` 里 `wt_ais_enabled` 为 `true`；后台「渠道」里出现标签 `wt-ais` 的渠道 `AIS playground`（站点每次启动都会把它和分组 `AIS PG`、模型倍率改回约定值，见 `API.md` §15.2）；登录后「捐赠账号」页多出 AIS playground 和算力池两个标签。
+4. 第一次有人捐成功后，用站长账号（不计次数）各调一次 `AIS PG-gemini-4-argon` 和 `AIS PG-gemini-3.8-flash`，确认 AI Studio 那边确实有 `gemini-4-argon` 和 `gemini-3.8-flash`；没有的话改 `.env` 不解决问题，要改代码里的模型表（`WtAisModels`）。
+5. 回退：删掉这三行，`docker compose up -d site`。标签和页面隐藏，渠道、分组和三张表留着无害；要彻底清理再手动删渠道。

@@ -1,0 +1,115 @@
+<!doctype html>
+<!-- wind-tide: AIS cookie helper (wind-tide/tools/ais-cookie-helper). -->
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>AIS Cookie Helper</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #141a2e;
+        --panel: #1d2541;
+        --text: #eef2ff;
+        --muted: #9aa6c9;
+        --accent: #f0b35a;
+        --accent-dark: #c98a2e;
+        --ok: #7bd88f;
+        --bad: #ff8a8a;
+      }
+      body {
+        margin: 0;
+        width: 340px;
+        font: 14px/1.6 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      main {
+        padding: 16px 16px 14px;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 16px;
+        letter-spacing: 0.02em;
+      }
+      p {
+        margin: 0 0 10px;
+        color: var(--muted);
+      }
+      ol {
+        margin: 0 0 12px;
+        padding-left: 18px;
+        color: var(--muted);
+      }
+      li + li {
+        margin-top: 2px;
+      }
+      button {
+        width: 100%;
+        padding: 10px 12px;
+        border: 0;
+        border-radius: 10px;
+        background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+        color: #1b1405;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: wait;
+      }
+      #status {
+        min-height: 22px;
+        margin-top: 10px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: var(--panel);
+        color: var(--muted);
+        white-space: pre-line;
+      }
+      #status.ok {
+        color: var(--ok);
+      }
+      #status.bad {
+        color: var(--bad);
+      }
+      textarea {
+        display: none;
+        width: 100%;
+        box-sizing: border-box;
+        height: 72px;
+        margin-top: 8px;
+        border: 1px solid #334066;
+        border-radius: 8px;
+        background: #0f1424;
+        color: var(--text);
+        font: 12px/1.4 ui-monospace, Consolas, monospace;
+        resize: vertical;
+      }
+      textarea.shown {
+        display: block;
+      }
+      footer {
+        margin-top: 10px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>复制 AI Studio Cookie</h1>
+      <p>把这个浏览器里 Google 账号的登录 Cookie 复制到剪贴板，回到中转站的「捐赠账号 → AIS playground」粘贴即可。</p>
+      <ol>
+        <li>建议新建一个浏览器用户（Profile），只登录要捐的备用 Google 账号。</li>
+        <li>先打开 aistudio.google.com，确认能正常进入。</li>
+        <li>再点下面的按钮。</li>
+      </ol>
+      <button id="copy" type="button">复制 Cookie</button>
+      <div id="status">尚未读取。</div>
+      <textarea id="fallback" readonly spellcheck="false" aria-label="Cookie 文本"></textarea>
+      <footer>只读 google.com 域名下的 Cookie，只在点按钮时读取，不保存、不联网。源码就在扩展文件夹里。</footer>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "AIS Cookie Helper · 风与潮之夜",
+  "version": "1.0.0",
+  "description": "一键复制这个浏览器里 Google 账号的 Cookie，用来向中转站的 AIS playground 号池捐赠 AI Studio 账号。只在你点按钮时读取，只复制到剪贴板，不联网。",
+  "permissions": ["cookies"],
+  "host_permissions": ["https://*.google.com/"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "复制 AI Studio Cookie",
+    "default_icon": {
+      "16": "icons/16.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  }
+}

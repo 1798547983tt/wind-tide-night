@@ -111,12 +111,40 @@ _Avoid_: 跟随系统
 ## 捐赠
 
 **捐赠账号** (Donated account):
-成员通过 Google 授权交给站点号池统一调配的 Antigravity 账号。
+成员交给站点号池统一调配的账号：Antigravity 账号通过 Google 授权交，AI Studio 账号通过登录 Cookie 交。
 _Avoid_: 捐号、上传账号
 
 **号池** (Account pool):
-站点接入的账号代理持有的全部 Antigravity 凭证，站点渠道从里面轮询取号。
+站点接入的账号代理持有的全部凭证，站点渠道从里面轮询取号。现在有两个：Antigravity 号池（CLIProxyAPI）和 AIS 号池（aistudio-api）。
 _Avoid_: 账号库
+
+**AIS 账号** (AI Studio account):
+成员以登录 Cookie 的形式捐给 AIS 号池的 Google AI Studio 账号；只取 Cookie 里浏览器的第一个账号。
+_Avoid_: Cookie 号、AIS 号
+
+**次数** (Calls):
+成员当天在某个 AIS PG 模型上还能调用的次数，每个模型各记各的。每个在池的 AIS 账号每天给捐赠者 `AIS PG-gemini-4-argon` 50 次、`AIS PG-gemini-3.8-flash` 100 次，当天没用完不结转。
+_Avoid_: 额度、配额、quota
+
+**公共池** (Public pool):
+当天由成员捐出的次数汇成的池子，每个 AIS PG 模型一个；有 AIS 账号的成员每天每个模型最多从里面取 100 次加到自己的次数里。
+_Avoid_: 公共号池、次数池
+
+**算力池** (Pool page):
+「捐赠账号」页的第三个标签：两个号池的水位、本人次数与公共池、公告和排行榜。
+_Avoid_: 水位页、算力榜
+
+**水位** (Pool level):
+Antigravity 号池里全部账号剩余用量的平均比例，按模型组和时间窗口分别算，每 5 分钟刷新。
+_Avoid_: 总额度
+
+**公告** (Announcement):
+有人捐赠或移除账号、捐次数、取次数时自动生成的一条公开消息，带站内昵称（没有则用户名），只留最新 200 条。
+_Avoid_: 通知、广播
+
+**失败榜** (Failure board):
+按某个 AIS PG 模型的调用失败次数排序的榜单，和调用次数榜一样按模型分开、分今日与累计。
+_Avoid_: 黑榜
 
 **剩余用量** (Remaining allowance):
 Google 给某个捐赠账号的、按模型组和时间窗口计的剩余比例。不是成员余额。

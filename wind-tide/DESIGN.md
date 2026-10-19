@@ -135,3 +135,7 @@ grill 会话的产出。术语见 [CONTEXT.md](../CONTEXT.md)，关键取舍见 
 ## 14. 捐赠账号
 
 成员可以把不用的 Antigravity 小号授权给站点的号池（CLIProxyAPI），额度由全体成员共享；没有回报，捐赠者随时可以移除。页面在「个人 → 捐赠账号」，只在服务器配置了号池地址和管理密钥时出现（DEPLOY.md §9）。每人最多 10 个，只能看到自己捐的账号的状态和剩余用量。完整设计（流程、状态机、安全控制、测试）见 `wind-tide/specs/2026-10-17-antigravity-donation-design.md`，接口约定见 `API.md` 第 14 节。
+
+## 15. AIS playground 号池与算力池
+
+第二个号池接 aistudio-api：成员把不用的 Google AI Studio 账号以登录 Cookie 的形式捐进去（只取浏览器的第一个账号，风险说明写明这等于交出该账号的登录），换来 `AIS PG` 分组两个模型的每日调用：`AIS PG-gemini-4-argon` 每账号每天 50 次、`AIS PG-gemini-3.8-flash` 每账号每天 100 次，每个模型各自记账、各有一个公共次数池；没捐的人调不了。分组 `AIS PG`、渠道 `AIS playground` 和模型倍率由站点启动时自动建好并维护，手改会被改回（API.md §15.2）。「捐赠账号」页分成 Antigravity、AIS playground、算力池三个标签；算力池用两个动态水槽展示 Antigravity 号池全部账号的平均剩余比例和本人的 AIS 次数，每个模型附一个公共次数池（捐次数不限、取次数每人每天 100）、一个自动公告滚动条（捐/移除账号、捐/取次数，留 200 条）和每个模型的调用榜与失败榜（今日/累计）。一键取 Cookie 靠仓库自带的小扩展（`wind-tide/tools/ais-cookie-helper/`），备选 Cookie-Editor 和安卓提取器。接口约定见 `API.md` 第 15 节，部署见 `DEPLOY.md` §10。
