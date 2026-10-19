@@ -78,3 +78,36 @@ describe('wind-tide audit entries', () => {
     }
   )
 })
+
+describe('wind-tide AIS pool audit entries', () => {
+  // Their Chinese sentences arrive with the locale rows the operator loads
+  // (the build here carries the English template), so the English reading
+  // with its count is what this test pins down.
+  test.each([
+    [
+      'wt.ais_give',
+      { count: 5, model: 'gemini-4-argon' },
+      'Gave 5 gemini-4-argon calls to the public pool',
+    ],
+    [
+      'wt.ais_take',
+      { count: 12, model: 'gemini-3.8-flash' },
+      'Took 12 gemini-3.8-flash calls from the public pool',
+    ],
+  ])(
+    'a %s entry reads as an English sentence with its count and model',
+    async (action, params, sentence) => {
+      const i18n = createInstance()
+      await i18n.init({
+        lng: 'en',
+        resources: { en: { translation: {} } },
+        nsSeparator: false,
+        interpolation: { escapeValue: false },
+      })
+
+      expect(renderAuditContent({ op: { action, params } }, i18n.t)).toBe(
+        sentence
+      )
+    }
+  )
+})

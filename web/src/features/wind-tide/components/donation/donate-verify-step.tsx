@@ -11,12 +11,14 @@ import { LoadingState } from '@/components/loading-state'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 
-import type { DonationProgress } from '../../types'
+import type { DonationProgress, DonationProvider } from '../../types'
 
 type DonateVerifyStepProps = {
   progress: UseQueryResult<DonationProgress>
+  /** Which pool is verifying; the Antigravity one unless said otherwise. */
+  provider?: DonationProvider
   /** The email typed in step 1; Google may have authorized another account. */
-  typedEmail: string
+  typedEmail?: string
   onRetry: () => void
   onClose: () => void
 }
@@ -24,6 +26,7 @@ type DonateVerifyStepProps = {
 export function DonateVerifyStep(props: DonateVerifyStepProps) {
   const { t } = useTranslation()
   const record = props.progress.data
+  const aistudio = props.provider === 'aistudio'
 
   if (props.progress.isError) {
     return (
@@ -46,12 +49,20 @@ export function DonateVerifyStep(props: DonateVerifyStepProps) {
     return (
       <div className='space-y-4'>
         <LoadingState
-          message={t('Waiting for the pool to confirm the account…')}
+          message={
+            aistudio
+              ? t('Waiting for the pool to sign in with the account…')
+              : t('Waiting for the pool to confirm the account…')
+          }
         />
         <p className='text-muted-foreground text-sm'>
-          {t(
-            'This usually takes a few seconds. You can close this; the list keeps showing the progress.'
-          )}
+          {aistudio
+            ? t(
+                'This can take up to two minutes. You can close this; the list keeps showing the progress.'
+              )
+            : t(
+                'This usually takes a few seconds. You can close this; the list keeps showing the progress.'
+              )}
         </p>
         <div className='flex justify-end'>
           <Button type='button' variant='outline' onClick={props.onClose}>
@@ -81,7 +92,33 @@ export function DonateVerifyStep(props: DonateVerifyStepProps) {
     )
   }
 
-  const mismatch = record.email !== props.typedEmail.trim().toLowerCase()
+  if (aistudio) {
+    return (
+      <div className='space-y-4'>
+        <Alert>
+          <AlertTitle>{t('Added to the pool')}</AlertTitle>
+          <AlertDescription>
+            {record.email
+              ? t(
+                  '{{email}} is now in the AIS playground pool and raises your AIS PG calls for every day it stays. Thank you!',
+                  { email: record.email }
+                )
+              : t(
+                  'The account is now in the AIS playground pool and raises your AIS PG calls for every day it stays. Thank you!'
+                )}
+          </AlertDescription>
+        </Alert>
+        <div className='flex justify-end'>
+          <Button type='button' onClick={props.onClose}>
+            {t('Done')}
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  const typedEmail = props.typedEmail ?? ''
+  const mismatch = record.email !== typedEmail.trim().toLowerCase()
   return (
     <div className='space-y-4'>
       <Alert>
@@ -99,7 +136,7 @@ export function DonateVerifyStep(props: DonateVerifyStepProps) {
             <span>
               {t(
                 'Google authorized {{actual}} rather than {{typed}}; the pool keeps the account that was authorized.',
-                { actual: record.email, typed: props.typedEmail }
+                { actual: record.email, typed: typedEmail }
               )}
             </span>
           )}

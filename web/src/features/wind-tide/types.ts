@@ -134,7 +134,11 @@ export type GateRefusal = {
   retry_after: number
 }
 
-// wind-tide: donated Antigravity accounts (wind-tide/API.md §14).
+// wind-tide: donated Antigravity accounts (wind-tide/API.md §14) and donated
+// AI Studio accounts (§15). Both kinds share the donations list.
+
+/** Which pool a donated account went to. */
+export type DonationProvider = 'antigravity' | 'aistudio'
 
 export type DonationStatus = 'verifying' | 'active' | 'failed'
 
@@ -157,6 +161,34 @@ export type DonationPool = {
   failed: number
 }
 
+/** The AI Studio pool's verdict on an active donation (wind-tide/API.md §15). */
+export type AisPoolState =
+  | 'available'
+  | 'exhausted'
+  | 'cooldown'
+  | 'expired'
+  | 'missing'
+
+/** One upstream model an AI Studio account cannot serve until `retry_at`. */
+export type AisCoolingEntry = {
+  model: string
+  retry_at: number
+}
+
+export type AisDonationPool = {
+  state: AisPoolState
+  /** An English message key for the state. */
+  message: string
+  /** Unix seconds when a cooldown or the upstream quota day ends; 0 when none. */
+  retry_at: number
+  success: number
+  failed: number
+  /** Upstream requests on the pool's current quota day, all models together. */
+  requests_today: number
+  /** The models whose quota is used up, each with the end of its day. */
+  cooling: AisCoolingEntry[]
+}
+
 export type DonationTest = {
   at: number
   ok: boolean
@@ -164,19 +196,33 @@ export type DonationTest = {
   message: string
 }
 
-export type Donation = {
+type DonationRecord = {
   id: number
   email: string
   status: DonationStatus
   /** An English message key; empty unless the status is failed. */
   fail_reason: string
-  /** Only an active donation has one. */
-  pool: DonationPool | null
   /** Null until the first test. */
   last_test: DonationTest | null
   created_at: number
   verified_at: number
 }
+
+export type AntigravityDonation = DonationRecord & {
+  provider: 'antigravity'
+  /** Only an active donation has one. */
+  pool: DonationPool | null
+}
+
+export type AisDonation = DonationRecord & {
+  provider: 'aistudio'
+  /** Empty until the pool has read the signed-in email. */
+  email: string
+  /** Only an active donation has one. */
+  pool: AisDonationPool | null
+}
+
+export type Donation = AntigravityDonation | AisDonation
 
 export type DonationList = {
   max: number
@@ -228,5 +274,129 @@ export type DonationTestResult = {
   ok: boolean
   latency_ms: number
   message: string
+  /** Null for an AI Studio account, whose pool reports no usage. */
   usage: DonationUsage | null
+}
+
+// wind-tide: the compute pool tab (wind-tide/API.md §15).
+
+export type PoolBucketAverage = {
+  name: string
+  /** As Google names it: `5h` or `weekly` so far. */
+  window: string
+  /** 0 to 1, averaged over the accounts that answered. */
+  average_remaining_fraction: number
+}
+
+/** The last reading of every Antigravity credential, taken every 5 minutes. */
+export type AntigravityPoolLevel = {
+  /** Unix seconds; 0 before the first reading. */
+  fetched_at: number
+  accounts: number
+  healthy: number
+  buckets: PoolBucketAverage[]
+}
+
+/** One AIS PG model: the member's calls today and its public pool. */
+export type AisModelPool = {
+  /** The upstream name, `gemini-4-argon`: the key the API takes. */
+  model: string
+  /** What members call it: `AIS PG-gemini-4-argon`. */
+  relay_model: string
+  /** Calls a day each active account adds. */
+  per_account: number
+  /** The most calls a member may take from this pool in a day. */
+  take_max: number
+  allowance: number
+  calls: number
+  failed_today: number
+  given: number
+  taken: number
+  remaining: number
+  /** How many more calls the member may take from the pool today. */
+  take_left: number
+  pool_balance: number
+}
+
+/** The member's own AIS PG calls today and the public pools, per model. */
+export type AisPoolStatus = {
+  /** Beijing-time `YYYY-MM-DD`. */
+  day: string
+  /** The member's active AI Studio accounts; 0 for a non-donor. */
+  accounts: number
+  /** In the site's order: argon first. */
+  models: AisModelPool[]
+}
+
+export type PoolEventKind =
+  | 'antigravity_donated'
+  | 'antigravity_removed'
+  | 'ais_account_donated'
+  | 'ais_account_removed'
+  | 'ais_given'
+  | 'ais_taken'
+
+export type PoolEvent = {
+  id: number
+  kind: PoolEventKind
+  provider: string
+  /** The member's display name, else their username. */
+  display_name: string
+  /** Calls given or taken; 0 for account events. */
+  amount: number
+  /** The upstream model of a give or take; empty for account events. */
+  model: string
+  created_at: number
+}
+
+export type PoolOverview = {
+  /** Null when the site has no Antigravity pool. */
+  antigravity: AntigravityPoolLevel | null
+  /** Null when the site has no AI Studio pool. */
+  aistudio: AisPoolStatus | null
+  /** The latest 50, newest first. */
+  events: PoolEvent[]
+}
+
+export type PoolEventList = {
+  items: PoolEvent[]
+}
+
+/** What a give or take asks for: the upstream model and the calls. */
+export type AisTransferInput = {
+  model: string
+  count: number
+}
+
+export type AisGiveResult = {
+  model: string
+  remaining: number
+  pool_balance: number
+}
+
+export type AisTakeResult = AisGiveResult & {
+  take_left: number
+}
+
+export type AisLeaderboardEntry = {
+  rank: number
+  display_name: string
+  count: number
+}
+
+export type AisLeaderboardLists = {
+  calls: AisLeaderboardEntry[]
+  failed: AisLeaderboardEntry[]
+}
+
+export type AisModelLeaderboard = {
+  model: string
+  relay_model: string
+  today: AisLeaderboardLists
+  total: AisLeaderboardLists
+}
+
+/** Both boards of every AIS PG model, in the site's order. */
+export type AisLeaderboard = {
+  models: AisModelLeaderboard[]
 }

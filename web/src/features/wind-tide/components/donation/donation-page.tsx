@@ -6,7 +6,7 @@ Affero General Public License v3.0 or later. See the LICENSE file.
 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { HeartHandshake } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { EmptyState } from '@/components/empty-state'
@@ -29,11 +29,16 @@ const SLOGAN =
 
 type DialogState = { key: number; target: DonateTarget } | null
 
-/** The member's donated accounts (wind-tide/DESIGN.md §14). */
-export function DonationPage() {
+type DonationPageProps = {
+  /** The strip that switches between the pools, when the site has several. */
+  tabs?: ReactNode
+}
+
+/** The member's donated Antigravity accounts (wind-tide/DESIGN.md §14). */
+export function DonationPage(props: DonationPageProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const donations = useQuery(donationsQueryOptions)
+  const donations = useQuery(donationsQueryOptions('antigravity'))
   const [dialog, setDialog] = useState<DialogState>(null)
   const openings = useRef(0)
   const items = donations.data?.items ?? []
@@ -96,6 +101,7 @@ export function DonationPage() {
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
           <div className='space-y-4'>
+            {props.tabs}
             <p className='text-muted-foreground text-sm'>{t(SLOGAN)}</p>
             {content}
           </div>

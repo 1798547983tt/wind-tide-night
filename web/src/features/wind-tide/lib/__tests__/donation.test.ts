@@ -6,13 +6,20 @@ Affero General Public License v3.0 or later. See the LICENSE file.
 */
 import { describe, expect, test } from 'vitest'
 
-import type { Donation, DonationPool } from '../../types'
+import type {
+  AisDonation,
+  AisDonationPool,
+  AntigravityDonation,
+  Donation,
+  DonationPool,
+} from '../../types'
 import {
   CALLBACK_PRECHECK_MESSAGES,
   donationBadge,
   formatCountdown,
   formatRemaining,
   formatResetTime,
+  maskEmail,
   needsReauthorization,
   precheckCallbackAddress,
   tierLabel,
@@ -30,9 +37,10 @@ function pool(overrides: Partial<DonationPool> = {}): DonationPool {
   }
 }
 
-function donation(overrides: Partial<Donation> = {}): Donation {
+function donation(overrides: Partial<AntigravityDonation> = {}): Donation {
   return {
     id: 1,
+    provider: 'antigravity',
     email: 'someone@example.com',
     status: 'active',
     fail_reason: '',
@@ -179,5 +187,97 @@ describe('usage formatting', () => {
     expect(formatCountdown(5)).toBe('0:05')
     expect(formatCountdown(0)).toBe('0:00')
     expect(formatCountdown(-3)).toBe('0:00')
+  })
+})
+
+function aisPool(overrides: Partial<AisDonationPool> = {}): AisDonationPool {
+  return {
+    state: 'available',
+    message: 'Available',
+    retry_at: 0,
+    success: 0,
+    failed: 0,
+    requests_today: 0,
+    cooling: [],
+    ...overrides,
+  }
+}
+
+function aisDonation(overrides: Partial<AisDonation> = {}): Donation {
+  return {
+    id: 2,
+    provider: 'aistudio',
+    email: 'spare@example.com',
+    status: 'active',
+    fail_reason: '',
+    pool: aisPool(),
+    last_test: null,
+    created_at: 1760000000,
+    verified_at: 1760000100,
+    ...overrides,
+  }
+}
+
+describe('the badge of an AI Studio donation', () => {
+  test.each([
+    ['Verifying', 'info', aisDonation({ status: 'verifying', pool: null })],
+    [
+      'Failed',
+      'danger',
+      aisDonation({
+        status: 'failed',
+        pool: null,
+        fail_reason: 'The pool lost the account; donate again',
+      }),
+    ],
+    ['Available', 'success', aisDonation()],
+    [
+      'Quota used up today',
+      'warning',
+      aisDonation({
+        pool: aisPool({ state: 'exhausted', retry_at: 1760040000 }),
+      }),
+    ],
+    [
+      'Paused',
+      'warning',
+      aisDonation({
+        pool: aisPool({ state: 'cooldown', retry_at: 1760003600 }),
+      }),
+    ],
+    [
+      'Sign-in expired',
+      'danger',
+      aisDonation({ pool: aisPool({ state: 'expired' }) }),
+    ],
+    [
+      'Not in the pool',
+      'danger',
+      aisDonation({ pool: aisPool({ state: 'missing' }) }),
+    ],
+    // An active row the server could not attach a pool verdict to.
+    ['Pool unreachable', 'neutral', aisDonation({ pool: null })],
+  ])('reads %s in %s', (label, variant, row) => {
+    expect(donationBadge(row)).toEqual({ label, variant })
+  })
+
+  test('an AI Studio account is never re-authorized; it is removed and donated again', () => {
+    expect(
+      needsReauthorization(aisDonation({ pool: aisPool({ state: 'expired' }) }))
+    ).toBe(false)
+    expect(
+      needsReauthorization(aisDonation({ pool: aisPool({ state: 'missing' }) }))
+    ).toBe(false)
+  })
+})
+
+describe('masking an email', () => {
+  test.each([
+    ['someone@example.com', 'so***@example.com'],
+    ['a@example.com', 'a***@example.com'],
+    ['Google account', 'Google account'],
+    ['', ''],
+  ])('%j shows as %j', (email, masked) => {
+    expect(maskEmail(email)).toBe(masked)
   })
 })

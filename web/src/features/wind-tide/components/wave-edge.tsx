@@ -26,14 +26,18 @@ const WAVES = {
 type WaveEdgeProps = {
   /** Vertical edges run down the right side of what they cover. */
   orientation?: 'horizontal' | 'vertical'
+  /** The colour of the waves; the page background unless said otherwise. */
+  color?: string
   className?: string
 }
 
 /**
  * Two drifting wave layers in the page background colour, laid over the
- * edge of a section so the next one rises out of it like the tide.
+ * edge of a section so the next one rises out of it like the tide. Given
+ * another colour they are the surface of that liquid instead.
  */
 export function WaveEdge(props: WaveEdgeProps) {
+  const fill = props.color ?? 'var(--background)'
   if (props.orientation === 'vertical') {
     return (
       <div
@@ -48,14 +52,14 @@ export function WaveEdge(props: WaveEdgeProps) {
           preserveAspectRatio='none'
           className='wt-wave-drift-y-reverse absolute inset-0 h-[200%] w-full opacity-50'
         >
-          <path d={WAVES.vertical.back} fill='var(--background)' />
+          <path d={WAVES.vertical.back} fill={fill} />
         </svg>
         <svg
           viewBox='0 0 80 2400'
           preserveAspectRatio='none'
           className='wt-wave-drift-y absolute inset-0 h-[200%] w-full'
         >
-          <path d={WAVES.vertical.front} fill='var(--background)' />
+          <path d={WAVES.vertical.front} fill={fill} />
         </svg>
       </div>
     )
@@ -74,14 +78,14 @@ export function WaveEdge(props: WaveEdgeProps) {
         preserveAspectRatio='none'
         className='wt-wave-drift-reverse absolute inset-0 h-full w-[200%] opacity-50'
       >
-        <path d={WAVES.horizontal.back} fill='var(--background)' />
+        <path d={WAVES.horizontal.back} fill={fill} />
       </svg>
       <svg
         viewBox='0 0 2400 80'
         preserveAspectRatio='none'
         className='wt-wave-drift absolute inset-0 h-full w-[200%]'
       >
-        <path d={WAVES.horizontal.front} fill='var(--background)' />
+        <path d={WAVES.horizontal.front} fill={fill} />
       </svg>
     </div>
   )

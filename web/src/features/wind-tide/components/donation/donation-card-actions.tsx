@@ -74,6 +74,16 @@ export function DonationCardActions(props: DonationCardActionsProps) {
   let reauthorizeLabel: string | null = null
   if (donation.status === 'failed') reauthorizeLabel = 'Retry'
   else if (needsReauthorization(donation)) reauthorizeLabel = 'Authorize again'
+  // The pool holds a refresh token for an Antigravity account and a Cookie
+  // for an AI Studio one; removal deletes whichever it is.
+  const removeDescription =
+    donation.provider === 'aistudio'
+      ? t(
+          'The account leaves the pool now and its Cookie is deleted. You can donate it again later.'
+        )
+      : t(
+          'The account leaves the pool now and its token is deleted. You can donate it again later.'
+        )
 
   return (
     <>
@@ -112,9 +122,7 @@ export function DonationCardActions(props: DonationCardActionsProps) {
           if (!remove.isPending) setConfirmRemove(open)
         }}
         title={t('Remove this donated account?')}
-        desc={t(
-          'The account leaves the pool now and its token is deleted. You can donate it again later.'
-        )}
+        desc={removeDescription}
         confirmText={t('Remove')}
         destructive
         isLoading={remove.isPending}

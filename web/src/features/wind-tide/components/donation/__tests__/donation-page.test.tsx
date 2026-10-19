@@ -18,7 +18,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { api } from '@/lib/api'
 
-import type { Donation, DonationPool } from '../../../types'
+import type {
+  AntigravityDonation,
+  Donation,
+  DonationPool,
+} from '../../../types'
 import { DonationPage } from '../donation-page'
 
 let items: Donation[]
@@ -38,10 +42,11 @@ function pool(overrides: Partial<DonationPool> = {}): DonationPool {
 function donation(
   id: number,
   email: string,
-  overrides: Partial<Donation> = {}
+  overrides: Partial<AntigravityDonation> = {}
 ): Donation {
   return {
     id,
+    provider: 'antigravity',
     email,
     status: 'active',
     fail_reason: '',
@@ -147,6 +152,10 @@ describe('the donated accounts page', () => {
     ).toBeInTheDocument()
     expect(screen.getByText(/all for one and one for all/)).toBeInTheDocument()
     expect(screen.getByText('0 / 10 donated')).toBeInTheDocument()
+    // The list is the Antigravity pool's, named as such for the server.
+    expect(api.get).toHaveBeenCalledWith('/api/wt/donations', {
+      params: { provider: 'antigravity' },
+    })
     expect(
       screen.getByRole('button', { name: 'Donate an account' })
     ).toBeEnabled()

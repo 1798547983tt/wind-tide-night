@@ -511,6 +511,9 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   'wt.donation_add': 'Donated account {{id}} to the pool',
   'wt.donation_remove': 'Removed donated account {{id}} from the pool',
   'wt.donation_test': 'Tested donated account {{id}}',
+  // wind-tide: the AIS playground pool (wind-tide/API.md §15).
+  'wt.ais_give': 'Gave {{count}} {{model}} calls to the public pool',
+  'wt.ais_take': 'Took {{count}} {{model}} calls from the public pool',
   // System settings
   'option.update': 'Updated system setting {{key}}',
   'option.passkey_domains':

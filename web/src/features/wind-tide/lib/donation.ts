@@ -9,9 +9,9 @@ import type { QueryClient } from '@tanstack/react-query'
 import type { StatusVariant } from '@/components/status-badge'
 import { formatPercent } from '@/lib/format'
 
-import type { Donation, PoolState } from '../types'
+import type { AisPoolState, Donation, PoolState } from '../types'
 
-// The member's donated accounts page (wind-tide/API.md §14).
+// The member's donated accounts page (wind-tide/API.md §14 and §15).
 
 export const DONATIONS_QUERY_ROOT = ['wind-tide', 'donations'] as const
 
@@ -32,6 +32,15 @@ const POOL_BADGES: Record<PoolState, DonationBadge> = {
   unknown: { label: 'Pool unreachable', variant: 'neutral' },
 }
 
+// The AI Studio pool's states (wind-tide/API.md §15); labels are i18n keys.
+const AIS_POOL_BADGES: Record<AisPoolState, DonationBadge> = {
+  available: { label: 'Available', variant: 'success' },
+  exhausted: { label: 'Quota used up today', variant: 'warning' },
+  cooldown: { label: 'Paused', variant: 'warning' },
+  expired: { label: 'Sign-in expired', variant: 'danger' },
+  missing: { label: 'Not in the pool', variant: 'danger' },
+}
+
 export function donationBadge(donation: Donation): DonationBadge {
   if (donation.status === 'verifying') {
     return { label: 'Verifying', variant: 'info' }
@@ -39,15 +48,37 @@ export function donationBadge(donation: Donation): DonationBadge {
   if (donation.status === 'failed') {
     return { label: 'Failed', variant: 'danger' }
   }
+  if (donation.provider === 'aistudio') {
+    if (!donation.pool) return POOL_BADGES.unknown
+    return AIS_POOL_BADGES[donation.pool.state]
+  }
   return POOL_BADGES[donation.pool?.state ?? 'unknown']
 }
 
-/** An active account whose token the pool can no longer use. */
+/**
+ * An active Antigravity account whose token the pool can no longer use. An
+ * AI Studio account cannot be authorized again: its Cookie is removed and
+ * donated afresh.
+ */
 export function needsReauthorization(donation: Donation): boolean {
+  if (donation.provider !== 'antigravity') return false
   if (donation.status !== 'active' || !donation.pool) return false
   return (
     donation.pool.state === 'token_invalid' || donation.pool.state === 'missing'
   )
+}
+
+/**
+ * `someone@example.com` → `so***@example.com`: the member's own card names the
+ * account without spelling it out to anyone looking over their shoulder.
+ */
+export function maskEmail(email: string): string {
+  const at = email.indexOf('@')
+  if (at <= 0) return email
+  const local = email.slice(0, at)
+  const domain = email.slice(at)
+  const keep = Math.min(2, local.length)
+  return `${local.slice(0, keep)}***${domain}`
 }
 
 export type CallbackPrecheck = 'empty' | 'no_state' | 'no_code' | 'ok'

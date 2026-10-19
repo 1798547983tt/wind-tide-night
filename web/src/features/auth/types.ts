@@ -188,6 +188,8 @@ export interface SystemStatus {
   wt_discord_only?: boolean
   /** wind-tide: members may donate Antigravity accounts (wind-tide/API.md §14). */
   wt_donation_enabled?: boolean
+  /** wind-tide: members may donate AI Studio accounts (wind-tide/API.md §15). */
+  wt_ais_enabled?: boolean
   [key: string]: unknown
 }
 

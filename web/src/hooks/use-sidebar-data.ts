@@ -61,9 +61,10 @@ export function useSidebarData(): SidebarData {
   // query can still hold an earlier count, so the badge checks the view too.
   const ownerView = useViewRole() >= ROLE.SUPER_ADMIN
   // wind-tide: the donated accounts page exists only on a site wired to an
-  // account pool (wind-tide/API.md §14).
+  // account pool, Antigravity or AI Studio (wind-tide/API.md §14, §15).
   const { status } = useStatus()
-  const donationEnabled = status?.wt_donation_enabled === true
+  const donationEnabled =
+    status?.wt_donation_enabled === true || status?.wt_ais_enabled === true
   const { data: pendingEntryCount = 0 } = useQuery({
     ...pendingEntryCountQueryOptions,
     enabled: ownerView,

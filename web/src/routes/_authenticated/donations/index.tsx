@@ -6,11 +6,14 @@ Affero General Public License v3.0 or later. See the LICENSE file.
 */
 import { createFileRoute } from '@tanstack/react-router'
 
-import { DonationPage } from '@/features/wind-tide/components/donation/donation-page'
+import { DonationTabsPage } from '@/features/wind-tide/components/donation/donation-tabs-page'
+import { donationsSearchSchema } from '@/features/wind-tide/lib/donation-tabs'
 
-// wind-tide: members donate spare Antigravity accounts to the shared pool
-// (wind-tide/API.md §14). The sidebar hides the entry when the site has no
-// pool; a member opening the address by hand sees the server's refusal.
+// wind-tide: members donate spare Antigravity and AI Studio accounts to the
+// shared pools, and watch the pools on the third tab (wind-tide/API.md §14,
+// §15). The sidebar hides the entry when the site has no pool; a member
+// opening the address by hand sees the server's refusal.
 export const Route = createFileRoute('/_authenticated/donations/')({
-  component: DonationPage,
+  validateSearch: donationsSearchSchema,
+  component: DonationTabsPage,
 })

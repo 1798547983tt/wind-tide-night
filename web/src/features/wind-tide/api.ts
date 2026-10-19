@@ -13,6 +13,10 @@ import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { ART_BASE, type ArtManifest } from './lib/art'
 import type {
+  AisGiveResult,
+  AisLeaderboard,
+  AisTakeResult,
+  AisTransferInput,
   AllowlistEntry,
   AllowlistEntryInput,
   AllowlistStatus,
@@ -21,6 +25,7 @@ import type {
   CheckinResult,
   DonationList,
   DonationProgress,
+  DonationProvider,
   DonationStart,
   DonationSubmitted,
   DonationTestResult,
@@ -31,6 +36,8 @@ import type {
   LeaderboardBoard,
   LeaderboardPeriod,
   PageData,
+  PoolEventList,
+  PoolOverview,
   PublicStats,
 } from './types'
 
@@ -236,18 +243,26 @@ export async function rejectEntryRequest(
   return res.data
 }
 
-// wind-tide: donated Antigravity accounts (wind-tide/API.md §14).
+// wind-tide: donated Antigravity accounts (wind-tide/API.md §14) and donated
+// AI Studio accounts (§15).
 
-export const donationsQueryOptions = queryOptions({
-  queryKey: ['wind-tide', 'donations'],
-  queryFn: async () => {
-    const response =
-      await api.get<ApiResponse<DonationList>>('/api/wt/donations')
-    return requireServerSuccess(response.data).data as DonationList
-  },
-  // The page renders its own error state.
-  meta: { errorToast: false },
-})
+/** The member's donations to one pool, newest first. */
+export async function listDonations(provider: DonationProvider) {
+  const response = await api.get<ApiResponse<DonationList>>(
+    '/api/wt/donations',
+    { params: { provider } }
+  )
+  return requireServerSuccess(response.data).data as DonationList
+}
+
+export function donationsQueryOptions(provider: DonationProvider) {
+  return queryOptions({
+    queryKey: ['wind-tide', 'donations', provider],
+    queryFn: () => listDonations(provider),
+    // The page renders its own error state.
+    meta: { errorToast: false },
+  })
+}
 
 /** One record, polled by the donate dialog while the pool verifies it. */
 export function donationQueryOptions(id: number) {
@@ -313,4 +328,77 @@ export async function removeDonation(id: number) {
     `/api/wt/donations/${id}/remove`
   )
   return requireServerSuccess(response.data)
+}
+
+/**
+ * Hands the pool the Cookie of a signed-in AI Studio page. The text goes
+ * out once and is not kept anywhere on this side; the answer is the record
+ * the pool verifies in the background.
+ */
+export async function donateAistudio(input: {
+  cookies: string
+  accepted: boolean
+}) {
+  const response = await api.post<ApiResponse<DonationSubmitted>>(
+    '/api/wt/donations/aistudio',
+    input
+  )
+  return requireServerSuccess(response.data).data as DonationSubmitted
+}
+
+// wind-tide: the compute pool tab (wind-tide/API.md §15).
+
+export async function fetchPool() {
+  const response = await api.get<ApiResponse<PoolOverview>>('/api/wt/pool')
+  return requireServerSuccess(response.data).data as PoolOverview
+}
+
+export const poolQueryOptions = queryOptions({
+  queryKey: ['wind-tide', 'pool', 'overview'],
+  queryFn: fetchPool,
+  // The Antigravity reading changes every five minutes; the member's own
+  // calls change as they use them, so the tab looks again every minute.
+  staleTime: 30_000,
+  refetchInterval: 60_000,
+  meta: { errorToast: false },
+})
+
+export async function giveAisCalls(input: AisTransferInput) {
+  const response = await api.post<ApiResponse<AisGiveResult>>(
+    '/api/wt/pool/ais/give',
+    input
+  )
+  return requireServerSuccess(response.data).data as AisGiveResult
+}
+
+export async function takeAisCalls(input: AisTransferInput) {
+  const response = await api.post<ApiResponse<AisTakeResult>>(
+    '/api/wt/pool/ais/take',
+    input
+  )
+  return requireServerSuccess(response.data).data as AisTakeResult
+}
+
+export async function fetchAisLeaderboard() {
+  const response = await api.get<ApiResponse<AisLeaderboard>>(
+    '/api/wt/pool/ais/leaderboard'
+  )
+  return requireServerSuccess(response.data).data as AisLeaderboard
+}
+
+export const aisLeaderboardQueryOptions = queryOptions({
+  queryKey: ['wind-tide', 'pool', 'ais-leaderboard'],
+  queryFn: fetchAisLeaderboard,
+  staleTime: 60_000,
+  refetchInterval: 60_000,
+  meta: { errorToast: false },
+})
+
+/** Pool events newer than `after`, newest first; `after` 0 gives the latest 50. */
+export async function fetchPoolEvents(after: number) {
+  const response = await api.get<ApiResponse<PoolEventList>>(
+    '/api/wt/pool/events',
+    { params: { after } }
+  )
+  return requireServerSuccess(response.data).data as PoolEventList
 }

@@ -37,7 +37,9 @@ function PersonalNav() {
   )
 }
 
-async function renderSidebar(donationEnabled: boolean) {
+type PoolFlags = { donation?: boolean; ais?: boolean }
+
+async function renderSidebar(flags: PoolFlags) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -45,7 +47,8 @@ async function renderSidebar(donationEnabled: boolean) {
   // never asks the server for it.
   client.setQueryData(['status'], {
     SidebarModulesAdmin: '',
-    wt_donation_enabled: donationEnabled,
+    wt_donation_enabled: flags.donation === true,
+    wt_ais_enabled: flags.ais === true,
   })
   useAuthStore.getState().auth.setUser({
     id: 1,
@@ -74,7 +77,7 @@ afterEach(() => {
 
 describe('the donated accounts entry in the sidebar', () => {
   test('sits right after Wallet when the site has an account pool', async () => {
-    await renderSidebar(true)
+    await renderSidebar({ donation: true })
     const names = (await screen.findAllByRole('link')).map((link) =>
       link.textContent?.trim()
     )
@@ -86,8 +89,15 @@ describe('the donated accounts entry in the sidebar', () => {
     ).toHaveAttribute('href', '/donations')
   })
 
+  test('also appears when the site runs only the AI Studio pool', async () => {
+    await renderSidebar({ ais: true })
+    expect(
+      await screen.findByRole('link', { name: 'Donated accounts' })
+    ).toHaveAttribute('href', '/donations')
+  })
+
   test('is absent when the site has no account pool', async () => {
-    await renderSidebar(false)
+    await renderSidebar({})
     expect(
       await screen.findByRole('link', { name: 'Wallet' })
     ).toBeInTheDocument()
