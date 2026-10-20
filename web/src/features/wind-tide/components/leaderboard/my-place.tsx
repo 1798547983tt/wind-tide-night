@@ -7,13 +7,23 @@ Affero General Public License v3.0 or later. See the LICENSE file.
 import { useTranslation } from 'react-i18next'
 
 import { gapToPlaceAbove } from '../../lib/leaderboard'
-import type { Leaderboard } from '../../types'
+import type { Leaderboard, LeaderboardBoard } from '../../types'
 import { SealStamp } from '../seal-stamp'
 
 // Calligraphy on the seals, read as a picture: the text beside each says the
 // same in words, so these are not translation keys.
 const PLACE_SEAL = '名次'
 const OWNER_SEAL = '站长'
+
+// What gets a member onto each board, as i18n keys, told to one not on it
+// yet; on the failed boards, that they are better off as they are.
+const NOT_ON_BOARD_NOTE: Record<LeaderboardBoard, string> = {
+  calls: 'One call puts you on the board~',
+  failed: 'No failed calls; long may it last~',
+  success_streak: 'One successful call starts your streak~',
+  fail_streak: 'No failed calls; long may it last~',
+  balance: 'Check in to get on the board~',
+}
 
 type MyPlaceProps = {
   board: Leaderboard
@@ -46,10 +56,7 @@ export function MyPlace(props: MyPlaceProps) {
       />
     )
     headline = t('Not on the board yet')
-    note =
-      props.board.board === 'calls'
-        ? t('One call puts you on the board~')
-        : t('Check in to get on the board~')
+    note = t(NOT_ON_BOARD_NOTE[props.board.board])
   } else {
     headline = t('No. {{rank}}', { rank: me.rank })
     const gap = gapToPlaceAbove(props.board)

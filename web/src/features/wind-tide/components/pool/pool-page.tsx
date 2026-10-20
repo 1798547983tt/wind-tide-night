@@ -17,10 +17,11 @@ import { getServerErrorMessage } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
 import { poolQueryOptions } from '../../api'
-import { AisLeaderboards } from './ais-leaderboards'
+import { sharedPools } from '../../lib/pool'
 import { AisTank } from './ais-tank'
 import { AntigravityTank } from './antigravity-tank'
 import { PoolTicker } from './pool-ticker'
+import { SharedPool } from './shared-pool'
 
 type PoolPageProps = {
   /** The strip that switches between the pools, when the site has several. */
@@ -28,9 +29,9 @@ type PoolPageProps = {
 }
 
 /**
- * The compute pool tab (wind-tide/API.md §15): a tank per pool, the
- * announcement feed and the AIS PG leaderboards. A pool the site does not
- * run has no tank.
+ * The compute pool tab (wind-tide/API.md §15): the shared tide pool on top,
+ * a tank per pool under it and the announcement feed. A pool the site does
+ * not run has no tank.
  */
 export function PoolPage(props: PoolPageProps) {
   const { t } = useTranslation()
@@ -47,6 +48,7 @@ export function PoolPage(props: PoolPageProps) {
     )
   } else if (pool.data) {
     const overview = pool.data
+    const shared = sharedPools([overview.aistudio, overview.build])
     const tanks: ReactNode[] = []
     if (overview.antigravity) {
       tanks.push(
@@ -56,11 +58,15 @@ export function PoolPage(props: PoolPageProps) {
     if (overview.aistudio) {
       tanks.push(<AisTank key='aistudio' status={overview.aistudio} />)
     }
+    if (overview.build) {
+      tanks.push(<AisTank key='build' status={overview.build} />)
+    }
     content = (
       <>
+        {shared.length > 0 && <SharedPool pools={shared} />}
         {tanks.length === 0 ? (
           <p className='text-muted-foreground text-sm'>
-            {t('Neither pool is reporting right now')}
+            {t('No pool is reporting right now')}
           </p>
         ) : (
           <div
@@ -73,7 +79,6 @@ export function PoolPage(props: PoolPageProps) {
           </div>
         )}
         <PoolTicker seed={overview.events} />
-        {overview.aistudio && <AisLeaderboards />}
       </>
     )
   }

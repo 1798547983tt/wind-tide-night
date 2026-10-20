@@ -22,7 +22,7 @@ import { donationsSearchSchema } from '../../../lib/donation-tabs'
 import type { PoolOverview } from '../../../types'
 import { DonationTabsPage } from '../donation-tabs-page'
 
-type Flags = { donation?: boolean; ais?: boolean }
+type Flags = { donation?: boolean; ais?: boolean; build?: boolean }
 
 function overview(): PoolOverview {
   return {
@@ -35,10 +35,12 @@ function overview(): PoolOverview {
       ],
     },
     aistudio: {
+      provider: 'aistudio',
       day: '2026-10-19',
       accounts: 1,
       models: [
         {
+          provider: 'aistudio',
           model: 'gemini-4-argon',
           relay_model: 'AIS PG-gemini-4-argon',
           per_account: 50,
@@ -51,9 +53,12 @@ function overview(): PoolOverview {
           remaining: 45,
           take_left: 100,
           pool_balance: 20,
+          pool_given: 20,
+          pool_taken: 0,
         },
       ],
     },
+    build: null,
     events: [],
   }
 }
@@ -67,6 +72,7 @@ function renderPage(flags: Flags, initialEntry = '/donations') {
   client.setQueryData(['status'], {
     wt_donation_enabled: flags.donation === true,
     wt_ais_enabled: flags.ais === true,
+    wt_build_enabled: flags.build === true,
   })
   const root = createRootRoute()
   const authenticated = createRoute({
@@ -107,9 +113,6 @@ beforeEach(() => {
     if (url === '/api/wt/pool/events') {
       return { data: { success: true, data: { items: [] } } }
     }
-    if (url === '/api/wt/pool/ais/leaderboard') {
-      return { data: { success: true, data: { models: [] } } }
-    }
     throw new Error(`Unexpected GET ${url}`)
   })
 })
@@ -119,14 +122,15 @@ afterEach(() => {
 })
 
 describe('the tabs of the donated accounts page', () => {
-  test('with both pools on, all three tabs show and Antigravity opens first', async () => {
-    renderPage({ donation: true, ais: true })
+  test('with every pool on, all four tabs show and Antigravity opens first', async () => {
+    renderPage({ donation: true, ais: true, build: true })
     expect(
       await screen.findByText('No donated accounts yet')
     ).toBeInTheDocument()
     expect(tabNames()).toEqual([
       'Antigravity',
       'AIS playground',
+      'BUILD',
       'Compute pool',
     ])
     expect(screen.getByRole('tab', { name: 'Antigravity' })).toHaveAttribute(
@@ -162,6 +166,36 @@ describe('the tabs of the donated accounts page', () => {
     expect(api.get).toHaveBeenCalledWith('/api/wt/donations', {
       params: { provider: 'aistudio' },
     })
+  })
+
+  test('the BUILD tab opens its own page, which asks for its own donations', async () => {
+    renderPage(
+      { donation: true, ais: true, build: true },
+      '/donations?tab=build'
+    )
+    expect(await screen.findByText('No BUILD accounts yet')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'BUILD' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    expect(
+      screen.getByRole('button', { name: 'Donate a BUILD account' })
+    ).toBeEnabled()
+    expect(api.get).toHaveBeenCalledWith('/api/wt/donations', {
+      params: { provider: 'build' },
+    })
+  })
+
+  test('without the BUILD pool its tab is absent and its address falls back', async () => {
+    renderPage({ donation: true, ais: true }, '/donations?tab=build')
+    expect(
+      await screen.findByText('No donated accounts yet')
+    ).toBeInTheDocument()
+    expect(tabNames()).toEqual([
+      'Antigravity',
+      'AIS playground',
+      'Compute pool',
+    ])
   })
 
   test('with only the Antigravity pool, the AIS tab is absent and its address falls back', async () => {

@@ -22,23 +22,44 @@ import { Route as RankingsRoute } from '@/routes/rankings/index'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { artManifestQueryOptions } from '../../../api'
-import type { Leaderboard, LeaderboardBoard } from '../../../types'
+import type {
+  Leaderboard,
+  LeaderboardBoard,
+  LeaderboardItem,
+  LeaderboardPeriod,
+} from '../../../types'
 import { RankingsPage } from '../rankings-page'
 
 // The model board's charts draw on a canvas, which jsdom lacks.
 vi.mock('@visactor/react-vchart', () => ({ VChart: () => null }))
 
-function board(kind: LeaderboardBoard): Leaderboard {
+// First place on each board; the streak boards also tell the run right now.
+const FIRST_PLACE: Record<
+  LeaderboardBoard,
+  Pick<LeaderboardItem, 'value' | 'current'>
+> = {
+  calls: { value: 40 },
+  failed: { value: 3 },
+  success_streak: { value: 12, current: 5 },
+  fail_streak: { value: 2, current: 1 },
+  balance: { value: 4_999_500_000 },
+}
+
+/** The server's answer: the board asked for, over the period asked for. */
+function board(
+  kind: LeaderboardBoard,
+  period: Leaderboard['period']
+): Leaderboard {
   return {
     board: kind,
-    period: kind === 'calls' ? 'week' : '',
+    period,
     items: [
       {
         rank: 1,
         user_id: 100,
         display_name: 'Member 1',
         avatar_url: '',
-        value: kind === 'calls' ? 40 : 4_999_500_000,
+        ...FIRST_PLACE[kind],
       },
     ],
     me: { rank: 2, value: 0 },
@@ -53,8 +74,16 @@ function openRankings(entry: string) {
     .auth.setUser({ id: 7, username: 'tide', role: ROLE.USER })
   const get = vi.spyOn(api, 'get').mockImplementation(async (url, config) => {
     if (url === '/api/wt/leaderboard') {
-      const params = config?.params as { board: LeaderboardBoard }
-      return { data: { success: true, data: board(params.board) } }
+      const params = config?.params as {
+        board: LeaderboardBoard
+        period?: LeaderboardPeriod
+      }
+      return {
+        data: {
+          success: true,
+          data: board(params.board, params.period ?? ''),
+        },
+      }
     }
     if (url === '/api/rankings') throw new Error('Network Error')
     if (url === '/api/status') return { data: { success: true, data: {} } }
@@ -116,6 +145,31 @@ describe('rankings page', () => {
     })
   })
 
+  test('the six boards are offered as tabs, the members’ five before the model board', async () => {
+    openRankings('/rankings')
+
+    const tabs = within(await screen.findByRole('tablist')).getAllByRole('tab')
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      'Call board',
+      'Failed board',
+      'Success streak board',
+      'Fail streak board',
+      'Balance board',
+      'Model board',
+    ])
+  })
+
+  test('six tabs outgrow a phone, so the strip scrolls sideways instead of wrapping or widening the page', async () => {
+    openRankings('/rankings')
+
+    const tablist = await screen.findByRole('tablist')
+    expect(tablist.parentElement).toHaveClass('overflow-x-auto', 'min-w-0')
+    expect(tablist).toHaveClass('flex-nowrap')
+    for (const tab of within(tablist).getAllByRole('tab')) {
+      expect(tab).toHaveClass('flex-none', 'whitespace-nowrap')
+    }
+  })
+
   test('the title starts below the fixed 4rem header on phones and wider screens', async () => {
     openRankings('/rankings')
 
@@ -142,6 +196,45 @@ describe('rankings page', () => {
     // The balance board stands for the moment, so it has no period.
     expect(screen.queryByRole('group', { name: 'Period' })).toBeNull()
   })
+
+  test('choosing the failed board asks for failed calls over the same period and counts them as failed', async () => {
+    const user = userEvent.setup()
+    const { router, get } = openRankings('/rankings')
+    await screen.findByText('40 calls')
+
+    await user.click(screen.getByRole('tab', { name: 'Failed board' }))
+
+    expect(await screen.findByText('3 failed')).toBeVisible()
+    expect(router.state.location.search).toMatchObject({ board: 'failed' })
+    expect(get).toHaveBeenCalledWith('/api/wt/leaderboard', {
+      params: { board: 'failed', period: 'week' },
+    })
+    const periods = screen.getByRole('group', { name: 'Period' })
+    expect(
+      within(periods).getByRole('button', { name: 'Last 7 days' })
+    ).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  test.each<[LeaderboardBoard, string, string, string]>([
+    ['success_streak', 'Success streak board', '12 in a row', 'Now 5 in a row'],
+    ['fail_streak', 'Fail streak board', '2 in a row', 'Now 1 in a row'],
+  ])(
+    'the %s board is asked for without a period, offers none, and shows the run right now under the longest',
+    async (kind, name, longest, now) => {
+      const { get } = openRankings(`/rankings?board=${kind}`)
+
+      expect(await screen.findByRole('tab', { name })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
+      expect(await screen.findByText(longest)).toBeVisible()
+      expect(screen.getByText(now)).toBeVisible()
+      expect(screen.queryByRole('group', { name: 'Period' })).toBeNull()
+      expect(get).toHaveBeenCalledWith('/api/wt/leaderboard', {
+        params: { board: kind },
+      })
+    }
+  )
 
   test('choosing another period asks for that period and keeps it in the address', async () => {
     const user = userEvent.setup()

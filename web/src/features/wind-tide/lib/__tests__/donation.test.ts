@@ -10,11 +10,14 @@ import type {
   AisDonation,
   AisDonationPool,
   AntigravityDonation,
+  BuildDonation,
+  BuildDonationPool,
   Donation,
   DonationPool,
 } from '../../types'
 import {
   CALLBACK_PRECHECK_MESSAGES,
+  COOKIE_POOL_TEXTS,
   donationBadge,
   formatCountdown,
   formatRemaining,
@@ -279,5 +282,105 @@ describe('masking an email', () => {
     ['', ''],
   ])('%j shows as %j', (email, masked) => {
     expect(maskEmail(email)).toBe(masked)
+  })
+})
+
+function buildPool(
+  overrides: Partial<BuildDonationPool> = {}
+): BuildDonationPool {
+  return {
+    state: 'available',
+    message: 'Available',
+    index: 3,
+    current: false,
+    has_context: true,
+    ...overrides,
+  }
+}
+
+function buildDonation(overrides: Partial<BuildDonation> = {}): Donation {
+  return {
+    id: 3,
+    provider: 'build',
+    email: '',
+    status: 'active',
+    fail_reason: '',
+    pool: buildPool(),
+    last_test: null,
+    created_at: 1760000000,
+    verified_at: 1760000100,
+    ...overrides,
+  }
+}
+
+describe('the badge of a BUILD donation', () => {
+  test.each([
+    ['Verifying', 'info', buildDonation({ status: 'verifying', pool: null })],
+    [
+      'Failed',
+      'danger',
+      buildDonation({
+        status: 'failed',
+        pool: null,
+        fail_reason: 'The pool could not sign in with the account',
+      }),
+    ],
+    ['Available', 'success', buildDonation()],
+    [
+      'Sign-in expired',
+      'danger',
+      buildDonation({ pool: buildPool({ state: 'expired' }) }),
+    ],
+    [
+      'Unreadable',
+      'danger',
+      buildDonation({ pool: buildPool({ state: 'invalid' }) }),
+    ],
+    [
+      'Not in the pool',
+      'danger',
+      buildDonation({ pool: buildPool({ state: 'missing' }) }),
+    ],
+    // An active row the server could not attach a pool verdict to.
+    ['Pool unreachable', 'neutral', buildDonation({ pool: null })],
+  ])('reads %s in %s', (label, variant, row) => {
+    expect(donationBadge(row)).toEqual({ label, variant })
+  })
+
+  test('a BUILD account is never re-authorized either; it is removed and donated again', () => {
+    expect(
+      needsReauthorization(
+        buildDonation({ pool: buildPool({ state: 'expired' }) })
+      )
+    ).toBe(false)
+    expect(
+      needsReauthorization(
+        buildDonation({ pool: buildPool({ state: 'missing' }) })
+      )
+    ).toBe(false)
+  })
+})
+
+describe('the words of each Cookie pool', () => {
+  test('name the pool, its model and the way in', () => {
+    expect(COOKIE_POOL_TEXTS.aistudio.name).toBe('AIS playground')
+    expect(COOKIE_POOL_TEXTS.build.name).toBe('BUILD')
+    for (const texts of Object.values(COOKIE_POOL_TEXTS)) {
+      expect(texts.unlock).toMatch(/to unlock$/)
+      expect(texts.donate).toMatch(/^Donate a/)
+      expect(texts.emptyTitle).toMatch(/^No .* accounts yet$/)
+    }
+    expect(COOKIE_POOL_TEXTS.aistudio.addedWithEmail).toContain('{{email}}')
+    // The BUILD pool never reads the email, so both verdicts read the same.
+    expect(COOKIE_POOL_TEXTS.build.addedWithEmail).toBe(
+      COOKIE_POOL_TEXTS.build.added
+    )
+    expect(COOKIE_POOL_TEXTS.aistudio.slogan).toContain('50 calls a day')
+    expect(COOKIE_POOL_TEXTS.build.slogan).toContain(
+      '100 Build-gemini-3.8-flash calls a day'
+    )
+    expect(COOKIE_POOL_TEXTS.build.added).toContain('BUILD pool')
+    expect(COOKIE_POOL_TEXTS.aistudio.removal).toContain('Cookie')
+    expect(COOKIE_POOL_TEXTS.build.removal).toContain('sign-in')
   })
 })

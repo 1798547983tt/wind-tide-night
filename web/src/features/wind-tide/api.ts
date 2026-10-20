@@ -12,9 +12,9 @@ import { api, getSelf } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { ART_BASE, type ArtManifest } from './lib/art'
+import { boardHasPeriod } from './lib/leaderboard'
 import type {
   AisGiveResult,
-  AisLeaderboard,
   AisTakeResult,
   AisTransferInput,
   AllowlistEntry,
@@ -23,6 +23,7 @@ import type {
   ApiResponse,
   CheckinMonth,
   CheckinResult,
+  CookieProvider,
   DonationList,
   DonationProgress,
   DonationProvider,
@@ -113,12 +114,13 @@ export async function checkIn() {
   return requireServerSuccess(response.data).data as CheckinResult
 }
 
-// The balance board has no period, so its cache key leaves the period out.
+// The streak and balance boards have no period, so their cache keys leave
+// the period out.
 export function leaderboardQueryOptions(
   board: LeaderboardBoard,
   period: LeaderboardPeriod
 ) {
-  const params = board === 'calls' ? { board, period } : { board }
+  const params = boardHasPeriod(board) ? { board, period } : { board }
   return queryOptions({
     queryKey: ['wind-tide', 'leaderboard', params],
     queryFn: async () => {
@@ -346,6 +348,27 @@ export async function donateAistudio(input: {
   return requireServerSuccess(response.data).data as DonationSubmitted
 }
 
+/** The same Cookie, handed to the BUILD pool instead (wind-tide/API.md §15). */
+export async function donateBuild(input: {
+  cookies: string
+  accepted: boolean
+}) {
+  const response = await api.post<ApiResponse<DonationSubmitted>>(
+    '/api/wt/donations/build',
+    input
+  )
+  return requireServerSuccess(response.data).data as DonationSubmitted
+}
+
+/** Each Cookie pool's donate call, by provider. */
+export const COOKIE_DONATE: Record<
+  CookieProvider,
+  (input: { cookies: string; accepted: boolean }) => Promise<DonationSubmitted>
+> = {
+  aistudio: donateAistudio,
+  build: donateBuild,
+}
+
 // wind-tide: the compute pool tab (wind-tide/API.md §15).
 
 export async function fetchPool() {
@@ -378,21 +401,6 @@ export async function takeAisCalls(input: AisTransferInput) {
   )
   return requireServerSuccess(response.data).data as AisTakeResult
 }
-
-export async function fetchAisLeaderboard() {
-  const response = await api.get<ApiResponse<AisLeaderboard>>(
-    '/api/wt/pool/ais/leaderboard'
-  )
-  return requireServerSuccess(response.data).data as AisLeaderboard
-}
-
-export const aisLeaderboardQueryOptions = queryOptions({
-  queryKey: ['wind-tide', 'pool', 'ais-leaderboard'],
-  queryFn: fetchAisLeaderboard,
-  staleTime: 60_000,
-  refetchInterval: 60_000,
-  meta: { errorToast: false },
-})
 
 /** Pool events newer than `after`, newest first; `after` 0 gives the latest 50. */
 export async function fetchPoolEvents(after: number) {

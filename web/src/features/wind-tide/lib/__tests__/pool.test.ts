@@ -6,7 +6,12 @@ Affero General Public License v3.0 or later. See the LICENSE file.
 */
 import { describe, expect, test } from 'vitest'
 
-import type { AisModelPool, AntigravityPoolLevel, PoolEvent } from '../../types'
+import type {
+  AisModelPool,
+  AisPoolStatus,
+  AntigravityPoolLevel,
+  PoolEvent,
+} from '../../types'
 import {
   aisLevel,
   antigravityLevel,
@@ -14,6 +19,8 @@ import {
   parseCallCount,
   poolEventSentence,
   rotatePoolEvents,
+  sharedPoolLevel,
+  sharedPools,
 } from '../pool'
 
 function event(id: number, overrides: Partial<PoolEvent> = {}): PoolEvent {
@@ -35,6 +42,7 @@ function level(buckets: AntigravityPoolLevel['buckets']): AntigravityPoolLevel {
 
 function modelPool(overrides: Partial<AisModelPool> = {}): AisModelPool {
   return {
+    provider: 'aistudio',
     model: 'gemini-4-argon',
     relay_model: 'AIS PG-gemini-4-argon',
     per_account: 50,
@@ -47,6 +55,8 @@ function modelPool(overrides: Partial<AisModelPool> = {}): AisModelPool {
     remaining: 75,
     take_left: 100,
     pool_balance: 40,
+    pool_given: 40,
+    pool_taken: 0,
     ...overrides,
   }
 }
@@ -87,6 +97,39 @@ describe('tank levels', () => {
     expect(aisLevel(modelPool({ allowance: 0, remaining: 0 }))).toBe(0)
     expect(aisLevel(modelPool({ remaining: 120 }))).toBe(1)
   })
+
+  test('a shared pool stands as high as the share of the gifts still in it', () => {
+    expect(sharedPoolLevel(modelPool())).toBe(1)
+    expect(sharedPoolLevel(modelPool({ pool_balance: 10 }))).toBe(0.25)
+    expect(sharedPoolLevel(modelPool({ pool_balance: 0 }))).toBe(0)
+    // Nothing given yet is empty, whatever balance the server reports.
+    expect(sharedPoolLevel(modelPool({ pool_given: 0 }))).toBe(0)
+    expect(sharedPoolLevel(modelPool({ pool_balance: 90 }))).toBe(1)
+  })
+
+  test('the shared pools are every model of every Cookie pool the site runs, in order', () => {
+    const build = modelPool({
+      provider: 'build',
+      model: 'Build-gemini-3.8-flash',
+      relay_model: 'Build-gemini-3.8-flash',
+    })
+    const aistudio: AisPoolStatus = {
+      provider: 'aistudio',
+      day: '2026-10-19',
+      accounts: 1,
+      models: [modelPool(), modelPool({ model: 'gemini-3.8-flash' })],
+    }
+    const buildStatus: AisPoolStatus = {
+      ...aistudio,
+      provider: 'build',
+      models: [build],
+    }
+    expect(
+      sharedPools([aistudio, buildStatus]).map((pool) => pool.model)
+    ).toEqual(['gemini-4-argon', 'gemini-3.8-flash', 'Build-gemini-3.8-flash'])
+    expect(sharedPools([null, buildStatus])).toEqual([build])
+    expect(sharedPools([null, null])).toEqual([])
+  })
 })
 
 describe('announcement sentences', () => {
@@ -97,6 +140,10 @@ describe('announcement sentences', () => {
     ['ais_account_removed', '{{name}} removed an AI Studio account'],
     ['ais_given', '{{name}} gave {{count}} {{model}} calls to the pool'],
     ['ais_taken', '{{name}} took {{count}} {{model}} calls from the pool'],
+    ['build_account_donated', '{{name}} donated a BUILD account'],
+    ['build_account_removed', '{{name}} removed a BUILD account'],
+    ['build_given', '{{name}} gave {{count}} {{model}} calls to the pool'],
+    ['build_taken', '{{name}} took {{count}} {{model}} calls from the pool'],
   ] as const)('%s reads as %s', (kind, key) => {
     expect(
       poolEventSentence(

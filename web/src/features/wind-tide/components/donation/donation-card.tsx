@@ -4,6 +4,7 @@ Copyright (C) 2026 风与潮之夜 (Night of Wind & Tide) contributors
 Part of a modified version of new-api by QuantumNous, licensed under the GNU
 Affero General Public License v3.0 or later. See the LICENSE file.
 */
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
@@ -20,7 +21,12 @@ import { toIntlLocale } from '@/i18n/languages'
 import { formatTimestampRelative } from '@/lib/format'
 
 import { donationBadge, formatResetTime, maskEmail } from '../../lib/donation'
-import type { AisDonation, AntigravityDonation, Donation } from '../../types'
+import type {
+  AisDonation,
+  AntigravityDonation,
+  BuildDonation,
+  Donation,
+} from '../../types'
 import { DonationCardActions } from './donation-card-actions'
 import { DonationUsage } from './donation-usage'
 
@@ -48,8 +54,18 @@ export function DonationCard(props: DonationCardProps) {
     donation.pool !== null &&
     (donation.pool.state === 'ok' || donation.pool.state === 'cooldown')
   let title = donation.email
-  if (donation.provider === 'aistudio') {
+  let details: ReactNode = null
+  if (donation.provider === 'antigravity') {
+    details = <AntigravityPoolDetails donation={donation} locale={locale} />
+  } else if (donation.provider === 'aistudio') {
     title = donation.email ? maskEmail(donation.email) : t('Google account')
+    details = <AisPoolDetails donation={donation} locale={locale} />
+  } else {
+    // The BUILD pool never reads the email; the account goes by its slot.
+    title = donation.pool
+      ? t('BUILD account #{{index}}', { index: donation.pool.index })
+      : t('BUILD account')
+    details = <BuildPoolDetails donation={donation} />
   }
 
   return (
@@ -65,11 +81,7 @@ export function DonationCard(props: DonationCardProps) {
         </CardAction>
       </CardHeader>
       <CardContent className='space-y-3 text-sm'>
-        {donation.provider === 'antigravity' ? (
-          <AntigravityPoolDetails donation={donation} locale={locale} />
-        ) : (
-          <AisPoolDetails donation={donation} locale={locale} />
-        )}
+        {details}
         {donation.status === 'failed' && donation.fail_reason && (
           <p className='text-destructive'>{t(donation.fail_reason)}</p>
         )}
@@ -177,6 +189,31 @@ function AisPoolDetails(props: PoolDetailsProps<AisDonation>) {
           })}
         </p>
       )}
+      {pool.state !== 'available' && pool.message && (
+        <p className='text-muted-foreground break-words'>{t(pool.message)}</p>
+      )}
+    </>
+  )
+}
+
+/**
+ * The BUILD pool's figures: the account's slot, whether the pool is serving
+ * with it right now, and for an account it can no longer use, why.
+ */
+function BuildPoolDetails(props: PoolDetailsProps<BuildDonation>) {
+  const { t } = useTranslation()
+  const pool = props.donation.pool
+  if (!pool) return null
+  let turn: string | null = null
+  if (pool.state === 'available') {
+    turn = pool.current
+      ? t('Serving requests right now')
+      : t('Waiting its turn in the rotation')
+  }
+  return (
+    <>
+      <p>{t('Slot {{index}} in the pool', { index: pool.index })}</p>
+      {turn && <p className='text-muted-foreground'>{turn}</p>}
       {pool.state !== 'available' && pool.message && (
         <p className='text-muted-foreground break-words'>{t(pool.message)}</p>
       )}

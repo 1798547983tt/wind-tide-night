@@ -5,7 +5,7 @@ Part of a modified version of new-api by QuantumNous, licensed under the GNU
 Affero General Public License v3.0 or later. See the LICENSE file.
 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FlaskConical } from 'lucide-react'
+import { FlaskConical, Hammer, type LucideIcon } from 'lucide-react'
 import { useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -17,25 +17,39 @@ import { Button } from '@/components/ui/button'
 import { getServerErrorMessage } from '@/lib/server-error-message'
 
 import { donationsQueryOptions } from '../../api'
-import { invalidateDonationQueries } from '../../lib/donation'
+import {
+  COOKIE_POOL_TEXTS,
+  invalidateDonationQueries,
+} from '../../lib/donation'
 import { invalidatePoolQueries } from '../../lib/pool'
+import type { CookieProvider } from '../../types'
 import { AisDonateDialog } from './ais-donate-dialog'
 import { DonationList } from './donation-list'
 
-// The owner's words; the Chinese value is the one members read.
-const SLOGAN =
-  'Spare AI Studio accounts become shared AIS PG calls: every account you donate gives you 50 calls a day, and the pool shares the load.'
+/** A flask for the playground, a hammer for BUILD. */
+const ICONS: Record<CookieProvider, LucideIcon> = {
+  aistudio: FlaskConical,
+  build: Hammer,
+}
 
 type AisDonationPageProps = {
+  /** The pool the page is about. */
+  provider: CookieProvider
   /** The strip that switches between the pools, when the site has several. */
   tabs?: ReactNode
 }
 
-/** The member's donated AI Studio accounts (wind-tide/API.md §15). */
+/**
+ * The member's accounts donated to one Cookie pool, the AIS playground or
+ * BUILD (wind-tide/API.md §15). The owner's words at the top are the pool's
+ * own; the Chinese value is the one members read.
+ */
 export function AisDonationPage(props: AisDonationPageProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const donations = useQuery(donationsQueryOptions('aistudio'))
+  const texts = COOKIE_POOL_TEXTS[props.provider]
+  const Icon = ICONS[props.provider]
+  const donations = useQuery(donationsQueryOptions(props.provider))
   // A key per opening, so every run of the dialog starts from step 1.
   const [dialogKey, setDialogKey] = useState<number | null>(null)
   const openings = useRef(0)
@@ -69,11 +83,9 @@ export function AisDonationPage(props: AisDonationPageProps) {
   } else if (items.length === 0) {
     content = (
       <EmptyState
-        icon={FlaskConical}
-        title={t('No AI Studio accounts yet')}
-        description={t(
-          'Donate a spare AI Studio account: every active account gives you AIS PG calls each day, and the pool shares the load.'
-        )}
+        icon={Icon}
+        title={t(texts.emptyTitle)}
+        description={t(texts.emptyDescription)}
       />
     )
   }
@@ -93,8 +105,8 @@ export function AisDonationPage(props: AisDonationPageProps) {
             disabled={donations.isPending || full}
             onClick={openDialog}
           >
-            <FlaskConical className='size-4' />
-            {t('Donate an AI Studio account')}
+            <Icon className='size-4' />
+            {t(texts.donate)}
           </Button>
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
@@ -102,9 +114,9 @@ export function AisDonationPage(props: AisDonationPageProps) {
             {props.tabs}
             <header className='space-y-1'>
               <h3 className='font-mincho text-lg font-semibold'>
-                {t('AIS playground')}
+                {t(texts.name)}
               </h3>
-              <p className='text-muted-foreground text-sm'>{t(SLOGAN)}</p>
+              <p className='text-muted-foreground text-sm'>{t(texts.slogan)}</p>
             </header>
             {full && (
               <p className='text-warning text-sm'>
@@ -119,7 +131,12 @@ export function AisDonationPage(props: AisDonationPageProps) {
       </SectionPageLayout>
 
       {dialogKey !== null && (
-        <AisDonateDialog key={dialogKey} open onClose={closeDialog} />
+        <AisDonateDialog
+          key={dialogKey}
+          provider={props.provider}
+          open
+          onClose={closeDialog}
+        />
       )}
     </>
   )

@@ -28,12 +28,14 @@ import { PoolPage } from '../pool-page'
 
 const ARGON = 'AIS PG-gemini-4-argon'
 const FLASH = 'AIS PG-gemini-3.8-flash'
+const BUILD = 'Build-gemini-3.8-flash'
 
 let overview: PoolOverview
 let poolCalls: number
 
 function argonPool(overrides: Partial<AisModelPool> = {}): AisModelPool {
   return {
+    provider: 'aistudio',
     model: 'gemini-4-argon',
     relay_model: ARGON,
     per_account: 50,
@@ -46,6 +48,8 @@ function argonPool(overrides: Partial<AisModelPool> = {}): AisModelPool {
     remaining: 75,
     take_left: 100,
     pool_balance: 40,
+    pool_given: 40,
+    pool_taken: 0,
     ...overrides,
   }
 }
@@ -60,15 +64,46 @@ function flashPool(overrides: Partial<AisModelPool> = {}): AisModelPool {
     failed_today: 0,
     remaining: 180,
     pool_balance: 5,
+    pool_given: 8,
+    pool_taken: 3,
+    ...overrides,
+  })
+}
+
+/** The BUILD pool's one model: 100 calls an account, a public pool of its own. */
+function buildPool(overrides: Partial<AisModelPool> = {}): AisModelPool {
+  return argonPool({
+    provider: 'build',
+    model: BUILD,
+    relay_model: BUILD,
+    per_account: 100,
+    allowance: 100,
+    calls: 10,
+    failed_today: 0,
+    remaining: 90,
+    pool_balance: 12,
+    pool_given: 20,
+    pool_taken: 8,
     ...overrides,
   })
 }
 
 function aisStatus(overrides: Partial<AisPoolStatus> = {}): AisPoolStatus {
   return {
+    provider: 'aistudio',
     day: '2026-10-19',
     accounts: 2,
     models: [argonPool(), flashPool()],
+    ...overrides,
+  }
+}
+
+function buildStatus(overrides: Partial<AisPoolStatus> = {}): AisPoolStatus {
+  return {
+    provider: 'build',
+    day: '2026-10-19',
+    accounts: 1,
+    models: [buildPool()],
     ...overrides,
   }
 }
@@ -145,6 +180,7 @@ beforeEach(() => {
       ],
     },
     aistudio: aisStatus(),
+    build: buildStatus(),
     events: [
       event(3, {
         kind: 'ais_taken',
@@ -164,9 +200,6 @@ beforeEach(() => {
     }
     if (url === '/api/wt/pool/events') {
       return { data: { success: true, data: { items: [] } } }
-    }
-    if (url === '/api/wt/pool/ais/leaderboard') {
-      return { data: { success: true, data: { models: [] } } }
     }
     throw new Error(`Unexpected GET ${url}`)
   })
@@ -248,9 +281,7 @@ describe('the tanks', () => {
       within(argon).getByRole('img', { name: '75% full' })
     ).toBeInTheDocument()
     expect(within(argon).getByText('Public pool today: 40')).toBeInTheDocument()
-    expect(
-      within(argon).getByText('Used today: 25 · failed 1')
-    ).toBeInTheDocument()
+    expect(within(argon).getByText('Used today: 25')).toBeInTheDocument()
     expect(
       within(argon).getByText('You can still take 100 today')
     ).toBeInTheDocument()
@@ -271,6 +302,48 @@ describe('the tanks', () => {
     expect(
       screen.queryByText('Donate an AI Studio account to unlock')
     ).not.toBeInTheDocument()
+
+    // The BUILD tank stands beside, with its own pool's figures.
+    expect(screen.getByText('Your active accounts: 1')).toBeInTheDocument()
+    const build = await gaugeOf(BUILD)
+    expect(within(build).getByText('90')).toBeInTheDocument()
+    expect(within(build).getByText('/ 100')).toBeInTheDocument()
+    expect(
+      within(build).getByRole('img', { name: '90% full' })
+    ).toBeInTheDocument()
+    expect(within(build).getByText('Public pool today: 12')).toBeInTheDocument()
+    expect(within(build).getByText('Used today: 10')).toBeInTheDocument()
+    expect(
+      screen.queryByText('Donate a BUILD account to unlock')
+    ).not.toBeInTheDocument()
+  })
+
+  test('the shared pool on top adds up every public pool of the day', async () => {
+    renderPage()
+    const shared = await screen.findByRole('region', { name: 'Shared pool' })
+    expect(
+      within(shared).getByText('The tide everyone fills')
+    ).toBeInTheDocument()
+    // 40 + 5 + 12 in the pools; 40 + 8 + 20 given; 0 + 3 + 8 taken.
+    expect(within(shared).getByText('57')).toBeInTheDocument()
+    expect(within(shared).getByText('Given today')).toBeInTheDocument()
+    expect(within(shared).getByText('68')).toBeInTheDocument()
+    expect(within(shared).getByText('Taken today')).toBeInTheDocument()
+    expect(within(shared).getByText('11')).toBeInTheDocument()
+    expect(
+      within(shared).getByText('84% of the gifts still in the pool')
+    ).toBeInTheDocument()
+    const lanterns = within(
+      within(shared).getByRole('list', { name: 'Pools by model' })
+    ).getAllByRole('listitem')
+    expect(lanterns).toHaveLength(3)
+    expect(lanterns[0]).toHaveTextContent(ARGON)
+    expect(lanterns[0]).toHaveTextContent('Given 40 · taken 0 today')
+    expect(lanterns[2]).toHaveTextContent(BUILD)
+    expect(lanterns[2]).toHaveTextContent('Given 20 · taken 8 today')
+    expect(
+      within(shared).getByRole('progressbar', { name: `${BUILD} tide` })
+    ).toHaveAttribute('aria-valuenow', '60')
   })
 
   test('before the first reading the Antigravity tank says so', async () => {
@@ -287,22 +360,38 @@ describe('the tanks', () => {
     expect(screen.queryByText(/accounts healthy/)).not.toBeInTheDocument()
   })
 
-  test('a pool the site does not run has no tank, and no boards without AIS', async () => {
-    overview = { ...overview, antigravity: null, aistudio: null }
+  test('a pool the site does not run has no tank, and no shared pool without a Cookie pool', async () => {
+    overview = { ...overview, antigravity: null, aistudio: null, build: null }
     renderPage()
     expect(
-      await screen.findByText('Neither pool is reporting right now')
+      await screen.findByText('No pool is reporting right now')
     ).toBeInTheDocument()
     expect(screen.queryByText(/accounts healthy/)).not.toBeInTheDocument()
     expect(screen.queryByText(/Public pool today/)).not.toBeInTheDocument()
-    expect(screen.queryByText('AIS PG calls')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('region', { name: 'Shared pool' })
+    ).not.toBeInTheDocument()
+    // The boards left this page for /rankings.
     const urls = vi.mocked(api.get).mock.calls.map(([url]) => String(url))
     expect(urls).not.toContain('/api/wt/pool/ais/leaderboard')
+    expect(urls).not.toContain('/api/wt/leaderboard')
+  })
+
+  test('with only the Antigravity pool there is a tank but no shared pool', async () => {
+    overview = { ...overview, aistudio: null, build: null }
+    renderPage()
+    expect(
+      await screen.findByText('3 / 4 accounts healthy')
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('region', { name: 'Shared pool' })
+    ).not.toBeInTheDocument()
   })
 
   test('a member without an AI Studio account sees the panel locked, with the way in', async () => {
     overview = {
       ...overview,
+      build: null,
       aistudio: aisStatus({
         accounts: 0,
         models: [
@@ -323,6 +412,26 @@ describe('the tanks', () => {
       screen.queryByRole('button', { name: 'Take calls' })
     ).not.toBeInTheDocument()
     expect(screen.getAllByRole('img', { name: '0% full' })).toHaveLength(2)
+  })
+
+  test('a member without a BUILD account sees that panel locked, with its own way in', async () => {
+    overview = {
+      ...overview,
+      aistudio: null,
+      build: buildStatus({
+        accounts: 0,
+        models: [buildPool({ allowance: 0, remaining: 0, calls: 0 })],
+      }),
+    }
+    renderPage()
+    const unlock = await screen.findByRole('link', {
+      name: 'Donate a BUILD account to unlock',
+    })
+    expect(unlock).toHaveAttribute('href', '/donations?tab=build')
+    expect(
+      screen.queryByRole('button', { name: 'Give calls' })
+    ).not.toBeInTheDocument()
+    expect(screen.getAllByRole('img', { name: '0% full' })).toHaveLength(1)
   })
 })
 

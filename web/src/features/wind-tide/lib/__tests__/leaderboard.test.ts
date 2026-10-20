@@ -7,7 +7,7 @@ Affero General Public License v3.0 or later. See the LICENSE file.
 import { describe, expect, test } from 'vitest'
 
 import type { Leaderboard } from '../../types'
-import { gapToPlaceAbove } from '../leaderboard'
+import { boardHasPeriod, boardIsStreak, gapToPlaceAbove } from '../leaderboard'
 
 /** A calls board listing the given [rank, value] pairs. */
 function board(ranked: [number, number][], me: Leaderboard['me']): Leaderboard {
@@ -25,6 +25,32 @@ function board(ranked: [number, number][], me: Leaderboard['me']): Leaderboard {
     updated_at: 1_760_000_000,
   }
 }
+
+describe('boards with a period', () => {
+  test('the calls and failed boards are counted over a period', () => {
+    expect(boardHasPeriod('calls')).toBe(true)
+    expect(boardHasPeriod('failed')).toBe(true)
+  })
+
+  test('the streak and balance boards stand for the moment and have none', () => {
+    expect(boardHasPeriod('success_streak')).toBe(false)
+    expect(boardHasPeriod('fail_streak')).toBe(false)
+    expect(boardHasPeriod('balance')).toBe(false)
+  })
+})
+
+describe('streak boards', () => {
+  test('the success and fail streak boards count runs in a row', () => {
+    expect(boardIsStreak('success_streak')).toBe(true)
+    expect(boardIsStreak('fail_streak')).toBe(true)
+  })
+
+  test('the calls, failed and balance boards count totals, not runs', () => {
+    expect(boardIsStreak('calls')).toBe(false)
+    expect(boardIsStreak('failed')).toBe(false)
+    expect(boardIsStreak('balance')).toBe(false)
+  })
+})
 
 describe('gap to the place above', () => {
   test('a member in the list lacks the difference to the closest value ahead', () => {

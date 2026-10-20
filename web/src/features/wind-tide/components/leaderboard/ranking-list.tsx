@@ -20,6 +20,8 @@ type RankingListProps = {
   /** The signed-in member, whose row is lit. */
   myId: number
   formatValue: (value: number) => string
+  /** A smaller note before the value, such as a streak board's run right now. */
+  formatDetail?: (item: LeaderboardItem) => string
 }
 
 /**
@@ -62,6 +64,11 @@ export function RankingList(props: RankingListProps) {
               {item.display_name}
             </span>
             {isMe && <Badge className='px-1.5 text-[10px]'>{t('Me')}</Badge>}
+            {props.formatDetail && (
+              <span className='text-muted-foreground shrink-0 text-xs whitespace-nowrap [font-variant-numeric:lining-nums_tabular-nums]'>
+                {props.formatDetail(item)}
+              </span>
+            )}
             <span className='font-display shrink-0 text-lg font-semibold whitespace-nowrap [font-variant-numeric:lining-nums_tabular-nums] sm:text-xl'>
               {props.formatValue(item.value)}
             </span>

@@ -190,6 +190,8 @@ export interface SystemStatus {
   wt_donation_enabled?: boolean
   /** wind-tide: members may donate AI Studio accounts (wind-tide/API.md §15). */
   wt_ais_enabled?: boolean
+  /** wind-tide: members may donate accounts to the BUILD pool (wind-tide/API.md §15). */
+  wt_build_enabled?: boolean
   [key: string]: unknown
 }
 

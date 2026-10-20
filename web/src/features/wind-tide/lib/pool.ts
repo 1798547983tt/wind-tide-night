@@ -8,6 +8,7 @@ import type { QueryClient } from '@tanstack/react-query'
 
 import type {
   AisModelPool,
+  AisPoolStatus,
   AntigravityPoolLevel,
   PoolEvent,
   PoolEventKind,
@@ -42,10 +43,26 @@ export function antigravityLevel(level: AntigravityPoolLevel): number {
   return clampFraction(sum / level.buckets.length)
 }
 
-/** How full a model's AIS gauge is: what the member has left of the day's allowance. */
+/** How full a model's gauge is: what the member has left of the day's allowance. */
 export function aisLevel(pool: AisModelPool): number {
   if (pool.allowance <= 0) return 0
   return clampFraction(pool.remaining / pool.allowance)
+}
+
+/**
+ * How full a model's public pool is: what is left of everything given today.
+ * Nothing given yet is an empty pool, whatever stray balance it reports.
+ */
+export function sharedPoolLevel(pool: AisModelPool): number {
+  if (pool.pool_given <= 0) return 0
+  return clampFraction(pool.pool_balance / pool.pool_given)
+}
+
+/** The public pools of every Cookie pool the site runs, in the site's order. */
+export function sharedPools(
+  statuses: (AisPoolStatus | null)[]
+): AisModelPool[] {
+  return statuses.flatMap((status) => status?.models ?? [])
 }
 
 export type PoolEventSentence = {
@@ -62,6 +79,10 @@ const EVENT_SENTENCES: Record<PoolEventKind, string> = {
   ais_account_removed: '{{name}} removed an AI Studio account',
   ais_given: '{{name}} gave {{count}} {{model}} calls to the pool',
   ais_taken: '{{name}} took {{count}} {{model}} calls from the pool',
+  build_account_donated: '{{name}} donated a BUILD account',
+  build_account_removed: '{{name}} removed a BUILD account',
+  build_given: '{{name}} gave {{count}} {{model}} calls to the pool',
+  build_taken: '{{name}} took {{count}} {{model}} calls from the pool',
 }
 
 /**

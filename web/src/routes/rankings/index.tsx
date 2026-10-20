@@ -29,7 +29,17 @@ const rankingsSearchSchema = z.object({
     .optional()
     .catch(undefined),
   // wind-tide: the members' boards beside the model board (DESIGN.md §5).
-  board: z.enum(['calls', 'balance', 'models']).optional().catch(undefined),
+  board: z
+    .enum([
+      'calls',
+      'failed',
+      'success_streak',
+      'fail_streak',
+      'balance',
+      'models',
+    ])
+    .optional()
+    .catch(undefined),
   range: z.enum(['today', 'week', 'all']).optional().catch(undefined),
 })
 

@@ -9,7 +9,13 @@ import type { QueryClient } from '@tanstack/react-query'
 import type { StatusVariant } from '@/components/status-badge'
 import { formatPercent } from '@/lib/format'
 
-import type { AisPoolState, Donation, PoolState } from '../types'
+import type {
+  AisPoolState,
+  BuildPoolState,
+  CookieProvider,
+  Donation,
+  PoolState,
+} from '../types'
 
 // The member's donated accounts page (wind-tide/API.md §14 and §15).
 
@@ -41,6 +47,14 @@ const AIS_POOL_BADGES: Record<AisPoolState, DonationBadge> = {
   missing: { label: 'Not in the pool', variant: 'danger' },
 }
 
+// The BUILD pool's states (wind-tide/API.md §15); labels are i18n keys.
+const BUILD_POOL_BADGES: Record<BuildPoolState, DonationBadge> = {
+  available: { label: 'Available', variant: 'success' },
+  expired: { label: 'Sign-in expired', variant: 'danger' },
+  invalid: { label: 'Unreadable', variant: 'danger' },
+  missing: { label: 'Not in the pool', variant: 'danger' },
+}
+
 export function donationBadge(donation: Donation): DonationBadge {
   if (donation.status === 'verifying') {
     return { label: 'Verifying', variant: 'info' }
@@ -52,7 +66,65 @@ export function donationBadge(donation: Donation): DonationBadge {
     if (!donation.pool) return POOL_BADGES.unknown
     return AIS_POOL_BADGES[donation.pool.state]
   }
+  if (donation.provider === 'build') {
+    if (!donation.pool) return POOL_BADGES.unknown
+    return BUILD_POOL_BADGES[donation.pool.state]
+  }
   return POOL_BADGES[donation.pool?.state ?? 'unknown']
+}
+
+/** What the member reads about each Cookie pool; every value is an i18n key. */
+export type CookiePoolTexts = {
+  /** The pool's name, as the tab and the tank call it. */
+  name: string
+  /** The owner's words at the top of the page. */
+  slogan: string
+  emptyTitle: string
+  emptyDescription: string
+  /** The donate button and the dialog's title. */
+  donate: string
+  /** The way into a locked tank. */
+  unlock: string
+  /** Step 3's good news, without and with the account's email. */
+  added: string
+  addedWithEmail: string
+  /** What leaves with the account when it is removed. */
+  removal: string
+}
+
+export const COOKIE_POOL_TEXTS: Record<CookieProvider, CookiePoolTexts> = {
+  aistudio: {
+    name: 'AIS playground',
+    slogan:
+      'Spare AI Studio accounts become shared AIS PG calls: every account you donate gives you 50 calls a day, and the pool shares the load.',
+    emptyTitle: 'No AI Studio accounts yet',
+    emptyDescription:
+      'Donate a spare AI Studio account: every active account gives you AIS PG calls each day, and the pool shares the load.',
+    donate: 'Donate an AI Studio account',
+    unlock: 'Donate an AI Studio account to unlock',
+    added:
+      'The account is now in the AIS playground pool and raises your AIS PG calls for every day it stays. Thank you!',
+    addedWithEmail:
+      '{{email}} is now in the AIS playground pool and raises your AIS PG calls for every day it stays. Thank you!',
+    removal:
+      'The account leaves the pool now and its Cookie is deleted. You can donate it again later.',
+  },
+  build: {
+    name: 'BUILD',
+    slogan:
+      'Spare AI Studio accounts become shared BUILD calls: every account you donate gives you 100 Build-gemini-3.8-flash calls a day, and the pool shares the load.',
+    emptyTitle: 'No BUILD accounts yet',
+    emptyDescription:
+      'Donate a spare AI Studio account to the BUILD pool: every active account gives you 100 Build-gemini-3.8-flash calls a day, and the pool shares the load.',
+    donate: 'Donate a BUILD account',
+    unlock: 'Donate a BUILD account to unlock',
+    added:
+      'The account is now in the BUILD pool and raises your Build-gemini-3.8-flash calls for every day it stays. Thank you!',
+    addedWithEmail:
+      'The account is now in the BUILD pool and raises your Build-gemini-3.8-flash calls for every day it stays. Thank you!',
+    removal:
+      'The account leaves the pool now and its sign-in is deleted. You can donate it again later.',
+  },
 }
 
 /**

@@ -10,22 +10,24 @@ import { useTranslation } from 'react-i18next'
 
 import { getServerErrorMessage } from '@/lib/server-error-message'
 
-import { donateAistudio, donationQueryOptions } from '../api'
+import { COOKIE_DONATE, donationQueryOptions } from '../api'
 import { invalidateDonationQueries } from '../lib/donation'
 import { invalidatePoolQueries } from '../lib/pool'
+import type { CookieProvider } from '../types'
 
 export type AisDonateStep = 'consent' | 'cookie' | 'verify'
 
 const PROGRESS_POLL_MS = 3000
 
 /**
- * The three-step AI Studio donate flow (wind-tide/API.md §15): accept the
- * risks, hand the pool the Cookie, then watch the record until the pool has
- * signed in with it or given up. The Cookie lives in the step that collects
- * it and in the one request; nothing here keeps it. A refusal stays inside
- * the dialog as text, so the member pastes again without losing the step.
+ * The three-step Cookie donate flow (wind-tide/API.md §15), for the AIS
+ * playground pool or the BUILD pool: accept the risks, hand the pool the
+ * Cookie, then watch the record until the pool has signed in with it or
+ * given up. The Cookie lives in the step that collects it and in the one
+ * request; nothing here keeps it. A refusal stays inside the dialog as text,
+ * so the member pastes again without losing the step.
  */
-export function useAisDonateFlow() {
+export function useAisDonateFlow(provider: CookieProvider) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [accepted, setAccepted] = useState(false)
@@ -34,7 +36,7 @@ export function useAisDonateFlow() {
 
   const submit = useMutation({
     mutationFn: (cookies: string) =>
-      donateAistudio({ cookies, accepted: true }),
+      COOKIE_DONATE[provider]({ cookies, accepted: true }),
     onMutate: () => setSubmitError(null),
     onSuccess: (data) => setSubmittedId(data.id),
     onError: (error) =>

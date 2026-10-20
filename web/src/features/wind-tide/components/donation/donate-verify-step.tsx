@@ -11,6 +11,7 @@ import { LoadingState } from '@/components/loading-state'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 
+import { COOKIE_POOL_TEXTS, type CookiePoolTexts } from '../../lib/donation'
 import type { DonationProgress, DonationProvider } from '../../types'
 
 type DonateVerifyStepProps = {
@@ -26,7 +27,12 @@ type DonateVerifyStepProps = {
 export function DonateVerifyStep(props: DonateVerifyStepProps) {
   const { t } = useTranslation()
   const record = props.progress.data
-  const aistudio = props.provider === 'aistudio'
+  // The Cookie pools sign in with the account, which takes a while; the
+  // Antigravity pool only has to confirm it.
+  let cookiePool: CookiePoolTexts | null = null
+  if (props.provider === 'aistudio' || props.provider === 'build') {
+    cookiePool = COOKIE_POOL_TEXTS[props.provider]
+  }
 
   if (props.progress.isError) {
     return (
@@ -50,13 +56,13 @@ export function DonateVerifyStep(props: DonateVerifyStepProps) {
       <div className='space-y-4'>
         <LoadingState
           message={
-            aistudio
+            cookiePool
               ? t('Waiting for the pool to sign in with the account…')
               : t('Waiting for the pool to confirm the account…')
           }
         />
         <p className='text-muted-foreground text-sm'>
-          {aistudio
+          {cookiePool
             ? t(
                 'This can take up to two minutes. You can close this; the list keeps showing the progress.'
               )
@@ -92,20 +98,15 @@ export function DonateVerifyStep(props: DonateVerifyStepProps) {
     )
   }
 
-  if (aistudio) {
+  if (cookiePool) {
     return (
       <div className='space-y-4'>
         <Alert>
           <AlertTitle>{t('Added to the pool')}</AlertTitle>
           <AlertDescription>
             {record.email
-              ? t(
-                  '{{email}} is now in the AIS playground pool and raises your AIS PG calls for every day it stays. Thank you!',
-                  { email: record.email }
-                )
-              : t(
-                  'The account is now in the AIS playground pool and raises your AIS PG calls for every day it stays. Thank you!'
-                )}
+              ? t(cookiePool.addedWithEmail, { email: record.email })
+              : t(cookiePool.added)}
           </AlertDescription>
         </Alert>
         <div className='flex justify-end'>

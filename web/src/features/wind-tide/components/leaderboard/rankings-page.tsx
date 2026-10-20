@@ -13,20 +13,37 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import type { RankingPeriod } from '@/features/rankings/types'
 
-import type { LeaderboardPeriod } from '../../types'
+import { boardHasPeriod } from '../../lib/leaderboard'
+import type { LeaderboardBoard, LeaderboardPeriod } from '../../types'
 import { MemberBoard } from './member-board'
 import { ModelBoards } from './model-boards'
 
-type Board = 'calls' | 'balance' | 'models'
+type Board = LeaderboardBoard | 'models'
 
-// A wider underline in the brand colour, and tabs only as wide as their name.
+// The tabs in the order they are shown, with the i18n key of each name.
+const TABS: { board: Board; label: string }[] = [
+  { board: 'calls', label: 'Call board' },
+  { board: 'failed', label: 'Failed board' },
+  { board: 'success_streak', label: 'Success streak board' },
+  { board: 'fail_streak', label: 'Fail streak board' },
+  { board: 'balance', label: 'Balance board' },
+  { board: 'models', label: 'Model board' },
+]
+
+function isBoard(value: string): value is Board {
+  return TABS.some((tab) => tab.board === value)
+}
+
+// A wider underline in the brand colour, and tabs only as wide as their name,
+// which never breaks across lines.
 const TAB_CLASS =
-  'font-mincho h-auto flex-none px-0 pt-1 pb-3 text-base sm:text-lg group-data-horizontal/tabs:after:-bottom-px group-data-horizontal/tabs:after:h-[3px] after:rounded-full after:bg-primary'
+  'font-mincho h-auto flex-none px-0 pt-1 pb-3 text-base whitespace-nowrap sm:text-lg group-data-horizontal/tabs:after:-bottom-px group-data-horizontal/tabs:after:h-[3px] after:rounded-full after:bg-primary'
 
 /**
- * The rankings page (wind-tide/DESIGN.md §5): the members' call and balance
- * boards, and the upstream model board as the third tab. The board and its
- * period live in the address, so a link opens the same view.
+ * The rankings page (wind-tide/DESIGN.md §5): the members' call, failed,
+ * streak and balance boards, and the upstream model board as the last tab.
+ * The board and its period live in the address, so a link opens the same
+ * view.
  */
 export function RankingsPage() {
   const { t } = useTranslation()
@@ -35,6 +52,9 @@ export function RankingsPage() {
   const board = search.board ?? 'calls'
   const range = search.range ?? 'week'
   const period = search.period ?? 'week'
+  // The model board has periods of its own; of the members' boards, only
+  // those counted over time offer one.
+  const hasRange = board !== 'models' && boardHasPeriod(board)
 
   const show = (next: {
     board?: Board
@@ -69,7 +89,7 @@ export function RankingsPage() {
             </h1>
             <p className='text-muted-foreground mt-3 max-w-xl text-sm sm:text-base'>
               {t(
-                'Who calls the most and who has saved the most: the boards refresh every minute.'
+                'Who calls the most, who fails the most, the longest streaks and who has saved the most: the boards refresh every minute.'
               )}
             </p>
           </header>
@@ -77,31 +97,36 @@ export function RankingsPage() {
           <Tabs
             value={board}
             onValueChange={(value) => {
-              if (
-                value === 'calls' ||
-                value === 'balance' ||
-                value === 'models'
-              ) {
+              if (isBoard(value)) {
                 show({ board: value })
               }
             }}
             className='mt-10 gap-0'
           >
             <div className='flex flex-col gap-3 border-b sm:flex-row sm:items-end sm:justify-between'>
-              <TabsList variant='line' className='h-auto gap-6 p-0 sm:gap-8'>
-                <TabsTrigger value='calls' className={TAB_CLASS}>
-                  {t('Call board')}
-                </TabsTrigger>
-                <TabsTrigger value='balance' className={TAB_CLASS}>
-                  {t('Balance board')}
-                </TabsTrigger>
-                <TabsTrigger value='models' className={TAB_CLASS}>
-                  {t('Model board')}
-                </TabsTrigger>
-              </TabsList>
+              {/* Six tabs outgrow a phone, so the strip scrolls sideways on
+                  its own rather than wrapping or widening the page. The
+                  pixel of padding keeps the active underline, which hangs
+                  below the tab onto the border, inside the scrolling box. */}
+              <div className='-mb-px min-w-0 overflow-x-auto pb-px'>
+                <TabsList
+                  variant='line'
+                  className='h-auto flex-nowrap gap-6 p-0 sm:gap-8'
+                >
+                  {TABS.map((tab) => (
+                    <TabsTrigger
+                      key={tab.board}
+                      value={tab.board}
+                      className={TAB_CLASS}
+                    >
+                      {t(tab.label)}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </div>
 
               <div className='pb-3'>
-                {board === 'calls' && (
+                {hasRange && (
                   <ToggleGroup
                     value={[range]}
                     onValueChange={(values) => {

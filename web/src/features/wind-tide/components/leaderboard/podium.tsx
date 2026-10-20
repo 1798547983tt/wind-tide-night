@@ -53,6 +53,8 @@ type PodiumProps = {
   /** The signed-in member, marked where they stand. */
   myId: number
   formatValue: (value: number) => string
+  /** A smaller line under the value, such as a streak board's run right now. */
+  formatDetail?: (item: LeaderboardItem) => string
 }
 
 /**
@@ -124,6 +126,11 @@ export function Podium(props: PodiumProps) {
                 <p className='font-display text-lg leading-tight font-semibold whitespace-nowrap italic [font-variant-numeric:lining-nums_tabular-nums] sm:text-2xl'>
                   {props.formatValue(item.value)}
                 </p>
+                {props.formatDetail && (
+                  <p className='text-muted-foreground mt-1 text-xs whitespace-nowrap [font-variant-numeric:lining-nums_tabular-nums]'>
+                    {props.formatDetail(item)}
+                  </p>
+                )}
 
                 <div
                   aria-hidden='true'

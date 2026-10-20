@@ -959,3 +959,191 @@ Affero General Public License v3.0 or later. See the LICENSE file.
     }
   }
 }
+
+/* ── The shared tide pool ───────────────────────────────────────────────── */
+
+@layer components {
+  /* The BUILD pool's tank is matcha, between the tide and the sun. */
+  .wt-tank[data-tone='matcha'] {
+    --wt-tank: var(--wt-matcha);
+  }
+
+  /* The night sea, whatever the theme: ink below, the moon's warmth above. */
+  .wt-shared-pool {
+    --wt-shared-water: rgb(79 163 199 / 0.5);
+    background:
+      radial-gradient(
+        ellipse at 82% 0%,
+        rgb(242 196 107 / 0.22),
+        transparent 46%
+      ),
+      linear-gradient(180deg, #16204a 0%, #0b1230 58%, #050c20 100%);
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.08),
+      0 32px 64px -32px rgb(5 12 32 / 0.85);
+  }
+  .dark .wt-shared-pool {
+    --wt-shared-water: rgb(111 217 209 / 0.42);
+  }
+  /* A few stars, each a tiny radial dot. */
+  .wt-shared-pool-sky {
+    background-image:
+      radial-gradient(
+        1px 1px at 12% 22%,
+        rgb(255 255 255 / 0.85),
+        transparent 70%
+      ),
+      radial-gradient(
+        1.5px 1.5px at 27% 9%,
+        rgb(255 255 255 / 0.75),
+        transparent 70%
+      ),
+      radial-gradient(
+        1px 1px at 45% 31%,
+        rgb(255 255 255 / 0.65),
+        transparent 70%
+      ),
+      radial-gradient(
+        1.5px 1.5px at 62% 15%,
+        rgb(255 255 255 / 0.8),
+        transparent 70%
+      ),
+      radial-gradient(
+        1px 1px at 73% 40%,
+        rgb(255 255 255 / 0.55),
+        transparent 70%
+      ),
+      radial-gradient(
+        1px 1px at 91% 28%,
+        rgb(255 255 255 / 0.7),
+        transparent 70%
+      );
+  }
+  .wt-shared-pool-moon {
+    background: radial-gradient(
+      circle,
+      rgb(255 246 230 / 0.95) 0 27%,
+      rgb(255 246 230 / 0.22) 30%,
+      transparent 62%
+    );
+    animation: wt-breathe 8s ease-in-out infinite;
+  }
+  .wt-shared-pool-water {
+    background: linear-gradient(
+      180deg,
+      var(--wt-shared-water),
+      rgb(79 163 199 / 0.12)
+    );
+    transition: height 1.6s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @keyframes wt-shared-pool-lantern {
+    from {
+      bottom: -16px;
+      opacity: 0;
+      translate: 0 0;
+    }
+    8% {
+      opacity: 1;
+    }
+    50% {
+      translate: 10px 0;
+    }
+    92% {
+      opacity: 0.7;
+    }
+    to {
+      bottom: 100%;
+      opacity: 0;
+      translate: -6px 0;
+    }
+  }
+  .wt-shared-pool-lantern {
+    position: absolute;
+    bottom: -16px;
+    border-radius: 9999px;
+    background: radial-gradient(
+      circle,
+      rgb(255 236 180 / 0.95),
+      rgb(242 196 107 / 0.35) 60%,
+      transparent 72%
+    );
+    box-shadow: 0 0 14px 4px rgb(242 196 107 / 0.28);
+    animation: wt-shared-pool-lantern var(--wt-duration, 14s) linear
+      var(--wt-delay, 0s) infinite;
+  }
+  .wt-shared-pool-glass {
+    background: linear-gradient(
+      135deg,
+      rgb(255 255 255 / 0.14),
+      rgb(255 255 255 / 0.05)
+    );
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14);
+    backdrop-filter: blur(6px);
+  }
+  /* Each model's tide, in the pool's own colours. */
+  .wt-shared-pool [data-slot='progress-track'] {
+    height: 0.375rem;
+    background: rgb(255 255 255 / 0.16);
+  }
+  .wt-shared-pool [data-slot='progress-indicator'] {
+    background: linear-gradient(90deg, var(--wt-tide), var(--wt-sun));
+    transition: width 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  /* A gift makes the pool glow; a take sends a ripple through the water. */
+  @keyframes wt-shared-pool-surge {
+    from {
+      box-shadow:
+        inset 0 0 0 1px rgb(255 255 255 / 0.08),
+        0 0 0 0 rgb(242 196 107 / 0.6);
+    }
+    to {
+      box-shadow:
+        inset 0 0 0 1px rgb(255 255 255 / 0.08),
+        0 0 0 32px rgb(242 196 107 / 0);
+    }
+  }
+  @keyframes wt-shared-pool-glow {
+    0%,
+    100% {
+      text-shadow: 0 0 0 rgb(242 196 107 / 0);
+    }
+    30% {
+      text-shadow: 0 0 28px rgb(242 196 107 / 0.95);
+    }
+  }
+  @keyframes wt-shared-pool-ebb {
+    0%,
+    100% {
+      translate: 0 0;
+    }
+    30% {
+      translate: 0 4px;
+    }
+    65% {
+      translate: 0 -2px;
+    }
+  }
+  .wt-shared-pool[data-pulse='surge'] {
+    animation: wt-shared-pool-surge 1.6s ease-out;
+  }
+  .wt-shared-pool[data-pulse='surge'] .wt-shared-pool-figure {
+    animation: wt-shared-pool-glow 1.6s ease-out;
+  }
+  .wt-shared-pool[data-pulse='ebb'] .wt-shared-pool-water {
+    animation: wt-shared-pool-ebb 1.2s ease-in-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .wt-shared-pool-moon,
+    .wt-shared-pool-lantern,
+    .wt-shared-pool[data-pulse='surge'],
+    .wt-shared-pool[data-pulse='surge'] .wt-shared-pool-figure,
+    .wt-shared-pool[data-pulse='ebb'] .wt-shared-pool-water {
+      animation: none;
+    }
+    .wt-shared-pool-water,
+    .wt-shared-pool [data-slot='progress-indicator'] {
+      transition: none;
+    }
+  }
+}

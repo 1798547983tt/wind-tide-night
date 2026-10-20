@@ -9,11 +9,15 @@ import { useTranslation } from 'react-i18next'
 import { Dialog } from '@/components/dialog'
 
 import { useAisDonateFlow } from '../../hooks/use-ais-donate-flow'
+import { COOKIE_POOL_TEXTS } from '../../lib/donation'
+import type { CookieProvider } from '../../types'
 import { AisConsentStep } from './ais-consent-step'
 import { AisCookieStep } from './ais-cookie-step'
 import { DonateVerifyStep } from './donate-verify-step'
 
 type AisDonateDialogProps = {
+  /** The pool the Cookie goes to. */
+  provider: CookieProvider
   open: boolean
   onClose: () => void
 }
@@ -26,13 +30,13 @@ const STEP_LABELS = {
 } as const
 
 /**
- * The three-step AI Studio donate dialog (wind-tide/API.md §15): the risks,
- * the Cookie, then the pool's verdict. Mount it with a key per opening so
- * every run starts from step 1.
+ * The three-step Cookie donate dialog (wind-tide/API.md §15): the risks, the
+ * Cookie, then the pool's verdict. Mount it with a key per opening so every
+ * run starts from step 1.
  */
 export function AisDonateDialog(props: AisDonateDialogProps) {
   const { t } = useTranslation()
-  const flow = useAisDonateFlow()
+  const flow = useAisDonateFlow(props.provider)
   const busy = flow.submit.isPending
   const close = () => {
     if (!busy) props.onClose()
@@ -44,7 +48,7 @@ export function AisDonateDialog(props: AisDonateDialogProps) {
       onOpenChange={(isOpen) => {
         if (!isOpen) close()
       }}
-      title={t('Donate an AI Studio account')}
+      title={t(COOKIE_POOL_TEXTS[props.provider].donate)}
       description={t('Step {{current}} of {{total}}: {{label}}', {
         current: STEP_INDEX[flow.step],
         total: 3,
@@ -65,7 +69,7 @@ export function AisDonateDialog(props: AisDonateDialogProps) {
       )}
       {flow.step === 'verify' && (
         <DonateVerifyStep
-          provider='aistudio'
+          provider={props.provider}
           progress={flow.progress}
           onRetry={flow.retry}
           onClose={props.onClose}

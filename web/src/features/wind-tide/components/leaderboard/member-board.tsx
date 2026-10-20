@@ -25,7 +25,12 @@ import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { leaderboardQueryOptions } from '../../api'
-import type { LeaderboardBoard, LeaderboardPeriod } from '../../types'
+import { boardHasPeriod, boardIsStreak } from '../../lib/leaderboard'
+import type {
+  LeaderboardBoard,
+  LeaderboardItem,
+  LeaderboardPeriod,
+} from '../../types'
 import { MascotFigure } from '../mascot/mascot-figure'
 import { MyPlace } from './my-place'
 import { Podium } from './podium'
@@ -33,8 +38,36 @@ import { RankingList } from './ranking-list'
 
 type MemberBoardProps = {
   board: LeaderboardBoard
-  /** The calls board's period; the balance board has none. */
+  /** The period of the calls and failed boards; the others have none. */
   range: LeaderboardPeriod
+}
+
+// What a board with nobody on it says, as i18n keys: the title and the
+// line under it.
+const EMPTY_COPY: Record<
+  LeaderboardBoard,
+  { title: string; description: string }
+> = {
+  calls: {
+    title: 'No calls yet',
+    description: 'First place is waiting for you~',
+  },
+  failed: {
+    title: 'No failed calls yet',
+    description: 'Long may it last~',
+  },
+  success_streak: {
+    title: 'No streaks yet',
+    description: 'One successful call starts a streak~',
+  },
+  fail_streak: {
+    title: 'No failed calls yet',
+    description: 'Long may it last~',
+  },
+  balance: {
+    title: 'Nobody has a balance yet',
+    description: 'Check in to get on the board~',
+  },
 }
 
 /**
@@ -102,11 +135,30 @@ export function MemberBoard(props: MemberBoardProps) {
   }
 
   const data = leaderboard.data
-  const calls = props.board === 'calls'
-  const formatValue = (value: number) =>
-    calls
-      ? t('{{calls}} calls', { calls: formatNumber(value, locale) })
-      : formatQuotaWithCurrency(value, { digitsLarge: 0 })
+  const formatValue = (value: number) => {
+    if (props.board === 'calls') {
+      return t('{{calls}} calls', { calls: formatNumber(value, locale) })
+    }
+    if (props.board === 'failed') {
+      return t('{{count}} failed', { count: formatNumber(value, locale) })
+    }
+    if (boardIsStreak(props.board)) {
+      return t('{{count}} in a row', { count: formatNumber(value, locale) })
+    }
+    return formatQuotaWithCurrency(value, { digitsLarge: 0 })
+  }
+  // On a streak board the run right now stands beside the longest; the
+  // server leaves it out when it is nought.
+  const formatDetail = boardIsStreak(props.board)
+    ? (item: LeaderboardItem) =>
+        t('Now {{count}} in a row', {
+          count: formatNumber(item.current ?? 0, locale),
+        })
+    : undefined
+  // Days are counted in Beijing time, which the all-time board needs no
+  // telling of.
+  const countedByDay = boardHasPeriod(props.board) && props.range !== 'all'
+  const empty = EMPTY_COPY[props.board]
   const updatedAt = new Intl.DateTimeFormat(locale, {
     hour: '2-digit',
     minute: '2-digit',
@@ -122,7 +174,7 @@ export function MemberBoard(props: MemberBoardProps) {
     >
       <p className='text-muted-foreground text-right text-xs'>
         {t('Updated at {{time}}', { time: updatedAt })}
-        {calls && props.range !== 'all' && ` · ${t('Counted by Beijing time')}`}
+        {countedByDay && ` · ${t('Counted by Beijing time')}`}
       </p>
 
       {data.items.length === 0 ? (
@@ -131,13 +183,9 @@ export function MemberBoard(props: MemberBoardProps) {
             {/* Nobody yet, so she dozes off. */}
             <MascotFigure mood='sleep' sizes='112px' imageClassName='size-28' />
             <EmptyTitle className='font-mincho text-base'>
-              {calls ? t('No calls yet') : t('Nobody has a balance yet')}
+              {t(empty.title)}
             </EmptyTitle>
-            <EmptyDescription>
-              {calls
-                ? t('First place is waiting for you~')
-                : t('Check in to get on the board~')}
-            </EmptyDescription>
+            <EmptyDescription>{t(empty.description)}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       ) : (
@@ -146,6 +194,7 @@ export function MemberBoard(props: MemberBoardProps) {
             items={data.items.slice(0, 3)}
             myId={user.id}
             formatValue={formatValue}
+            formatDetail={formatDetail}
           />
           {data.items.length > 3 && (
             <RankingList
@@ -153,6 +202,7 @@ export function MemberBoard(props: MemberBoardProps) {
               topValue={data.items[0].value}
               myId={user.id}
               formatValue={formatValue}
+              formatDetail={formatDetail}
             />
           )}
           <MyPlace board={data} formatValue={formatValue} />

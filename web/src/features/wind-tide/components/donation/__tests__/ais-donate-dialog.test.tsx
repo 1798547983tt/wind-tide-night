@@ -19,7 +19,7 @@ import {
 
 import { api } from '@/lib/api'
 
-import type { DonationProgress } from '../../../types'
+import type { CookieProvider, DonationProgress } from '../../../types'
 import { AisDonateDialog } from '../ais-donate-dialog'
 
 const COOKIE = '__Secure-1PSID=abc; SAPISID=def'
@@ -28,14 +28,14 @@ const EMAIL = 'spare@example.com'
 let progress: DonationProgress
 let onClose: Mock<() => void>
 
-function renderDialog() {
+function renderDialog(provider: CookieProvider = 'aistudio') {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   onClose = vi.fn<() => void>()
   render(
     <QueryClientProvider client={client}>
-      <AisDonateDialog open onClose={onClose} />
+      <AisDonateDialog provider={provider} open onClose={onClose} />
     </QueryClientProvider>
   )
 }
@@ -65,7 +65,10 @@ async function donate(cookie = COOKIE) {
 beforeEach(() => {
   progress = { id: 12, email: EMAIL, status: 'active', fail_reason: '' }
   vi.spyOn(api, 'post').mockImplementation(async (url) => {
-    if (url === '/api/wt/donations/aistudio') {
+    if (
+      url === '/api/wt/donations/aistudio' ||
+      url === '/api/wt/donations/build'
+    ) {
       return { data: { success: true, data: { id: 12, status: 'verifying' } } }
     }
     throw new Error(`Unexpected POST ${url}`)
@@ -157,6 +160,31 @@ describe('step 2: the Cookie', () => {
     expect(api.get).toHaveBeenCalledWith('/api/wt/donations/12')
     await userEvent.click(screen.getByRole('button', { name: 'Done' }))
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  test('for the BUILD pool the same steps post to its own address, and the verdict names it', async () => {
+    renderDialog('build')
+    expect(screen.getByText('Donate a BUILD account')).toBeInTheDocument()
+    await agree()
+    await donate()
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith('/api/wt/donations/build', {
+        cookies: COOKIE,
+        accepted: true,
+      })
+    )
+    expect(api.post).not.toHaveBeenCalledWith(
+      '/api/wt/donations/aistudio',
+      expect.anything()
+    )
+    expect(await screen.findByText('Added to the pool')).toBeInTheDocument()
+    // The BUILD pool never reads the email, so the verdict leaves it out.
+    expect(
+      screen.getByText(
+        'The account is now in the BUILD pool and raises your Build-gemini-3.8-flash calls for every day it stays. Thank you!'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText(new RegExp(EMAIL))).not.toBeInTheDocument()
   })
 
   test('a server refusal shows under the box and keeps the step and the text', async () => {

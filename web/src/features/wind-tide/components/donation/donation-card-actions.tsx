@@ -19,6 +19,7 @@ import {
   testDonation,
 } from '../../api'
 import {
+  COOKIE_POOL_TEXTS,
   invalidateDonationQueries,
   needsReauthorization,
 } from '../../lib/donation'
@@ -74,16 +75,15 @@ export function DonationCardActions(props: DonationCardActionsProps) {
   let reauthorizeLabel: string | null = null
   if (donation.status === 'failed') reauthorizeLabel = 'Retry'
   else if (needsReauthorization(donation)) reauthorizeLabel = 'Authorize again'
-  // The pool holds a refresh token for an Antigravity account and a Cookie
-  // for an AI Studio one; removal deletes whichever it is.
-  const removeDescription =
-    donation.provider === 'aistudio'
-      ? t(
-          'The account leaves the pool now and its Cookie is deleted. You can donate it again later.'
-        )
-      : t(
-          'The account leaves the pool now and its token is deleted. You can donate it again later.'
-        )
+  // The pool holds a refresh token for an Antigravity account, a Cookie for
+  // an AI Studio one and a browser sign-in for a BUILD one; removal deletes
+  // whichever it is.
+  let removeDescription = t(
+    'The account leaves the pool now and its token is deleted. You can donate it again later.'
+  )
+  if (donation.provider !== 'antigravity') {
+    removeDescription = t(COOKIE_POOL_TEXTS[donation.provider].removal)
+  }
 
   return (
     <>

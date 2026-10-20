@@ -13,8 +13,8 @@ import { cn } from '@/lib/utils'
 
 import { WaveEdge } from '../wave-edge'
 
-/** Tide blue for Antigravity, sun gold for the AI Studio pool. */
-export type TankTone = 'tide' | 'sun'
+/** Tide blue for Antigravity, sun gold for the AI Studio pool, matcha for BUILD. */
+export type TankTone = 'tide' | 'sun' | 'matcha'
 
 // The bubbles are fixed, so a gauge looks the same on every render: each
 // has its own place across the vessel and its own moment to set off.

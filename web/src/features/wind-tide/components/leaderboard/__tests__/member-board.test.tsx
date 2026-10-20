@@ -20,6 +20,7 @@ import { ROLE, type RoleValue } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { artManifestQueryOptions } from '../../../api'
+import { boardHasPeriod } from '../../../lib/leaderboard'
 import type {
   Leaderboard,
   LeaderboardBoard,
@@ -29,22 +30,26 @@ import { MemberBoard } from '../member-board'
 
 const ME = 7
 
-/** A board listing the given [rank, value]s, members named by position. */
+/**
+ * A board listing the given [rank, value, run right now]s, members named by
+ * position. The run is left out, as the server leaves it out, unless given.
+ */
 function leaderboard(
-  ranked: [number, number][],
+  ranked: [rank: number, value: number, current?: number][],
   me: Leaderboard['me'],
   options: { board?: LeaderboardBoard; myIndex?: number } = {}
 ): Leaderboard {
   const board = options.board ?? 'calls'
   return {
     board,
-    period: board === 'calls' ? 'week' : '',
-    items: ranked.map(([rank, value], index) => ({
+    period: boardHasPeriod(board) ? 'week' : '',
+    items: ranked.map(([rank, value, current], index) => ({
       rank,
       user_id: index === options.myIndex ? ME : 100 + index,
       display_name: `Member ${index + 1}`,
       avatar_url: '',
       value,
+      ...(current === undefined ? {} : { current }),
     })),
     me,
     updated_at: 1_760_000_000,
@@ -217,6 +222,123 @@ describe('members’ leaderboard', () => {
     expect(screen.queryByText(/Counted by Beijing time/)).toBeNull()
   })
 
+  test('the failed board counts each value as failed calls', async () => {
+    signIn()
+    vi.spyOn(api, 'get').mockResolvedValue({
+      data: {
+        success: true,
+        data: leaderboard(
+          [
+            [1, 9],
+            [2, 4],
+          ],
+          { rank: 2, value: 4 },
+          { board: 'failed', myIndex: 1 }
+        ),
+      },
+    })
+
+    renderBoard('failed', 'week')
+
+    const podium = await screen.findByRole('list', { name: 'Top three' })
+    expect(within(podium).getByText('9 failed')).toBeVisible()
+    expect(
+      screen.getByRole('complementary', { name: 'My place' })
+    ).toHaveTextContent('5 failed behind the place above')
+  })
+
+  test('the failed board, counted by the day like the calls board, says its days follow Beijing time', async () => {
+    signIn()
+    vi.spyOn(api, 'get').mockResolvedValue({
+      data: {
+        success: true,
+        data: leaderboard([[1, 9]], { rank: 2, value: 0 }, { board: 'failed' }),
+      },
+    })
+
+    renderBoard('failed', 'today')
+
+    expect(await screen.findByText(/Counted by Beijing time/)).toBeVisible()
+  })
+
+  test('a streak board shows the run right now beside each longest run, on the podium and in the list', async () => {
+    signIn()
+    vi.spyOn(api, 'get').mockResolvedValue({
+      data: {
+        success: true,
+        data: leaderboard(
+          [
+            [1, 12, 5],
+            [2, 8, 8],
+            [3, 6, 1],
+            [4, 3, 2],
+          ],
+          { rank: 4, value: 3 },
+          { board: 'success_streak', myIndex: 3 }
+        ),
+      },
+    })
+
+    renderBoard('success_streak', 'week')
+
+    const podium = await screen.findByRole('list', { name: 'Top three' })
+    const standing = within(podium).getAllByRole('listitem')
+    expect(standing[0]).toHaveTextContent(/12 in a row.*Now 5 in a row/)
+    expect(standing[1]).toHaveTextContent(/8 in a row.*Now 8 in a row/)
+    const others = within(
+      screen.getByRole('list', { name: 'Other members' })
+    ).getAllByRole('listitem')
+    expect(others[0]).toHaveTextContent(/Member 4.*Now 2 in a row.*3 in a row/)
+    expect(
+      screen.getByRole('complementary', { name: 'My place' })
+    ).toHaveTextContent('3 in a row behind the place above')
+    // A run stands for the moment, so no day is counted.
+    expect(screen.queryByText(/Counted by Beijing time/)).toBeNull()
+  })
+
+  test('a member whose run right now the server leaves out is shown at nought in a row', async () => {
+    signIn()
+    vi.spyOn(api, 'get').mockResolvedValue({
+      data: {
+        success: true,
+        data: leaderboard(
+          [[1, 4]],
+          { rank: 2, value: 0 },
+          { board: 'fail_streak' }
+        ),
+      },
+    })
+
+    renderBoard('fail_streak', 'week')
+
+    const podium = await screen.findByRole('list', { name: 'Top three' })
+    expect(within(podium).getByText('4 in a row')).toBeVisible()
+    expect(within(podium).getByText('Now 0 in a row')).toBeVisible()
+  })
+
+  test('the boards counting calls show no run right now', async () => {
+    signIn()
+    vi.spyOn(api, 'get').mockResolvedValue({
+      data: {
+        success: true,
+        data: leaderboard(
+          [
+            [1, 40],
+            [2, 25],
+            [3, 12],
+            [4, 9],
+          ],
+          { rank: 2, value: 0 }
+        ),
+      },
+    })
+
+    renderBoard('calls', 'week')
+
+    await screen.findByRole('list', { name: 'Other members' })
+    expect(screen.queryByText(/in a row/)).toBeNull()
+  })
+
   test('the calls board says its days follow Beijing time, except for the all-time board', async () => {
     signIn()
     vi.spyOn(api, 'get').mockResolvedValue({
@@ -262,6 +384,59 @@ describe('members’ leaderboard', () => {
     expect(await screen.findByText('Nobody has a balance yet')).toBeVisible()
     expect(screen.getByText('Check in to get on the board~')).toBeVisible()
   })
+
+  test.each<[LeaderboardBoard, string, string]>([
+    ['failed', 'No failed calls yet', 'Long may it last~'],
+    [
+      'success_streak',
+      'No streaks yet',
+      'One successful call starts a streak~',
+    ],
+    ['fail_streak', 'No failed calls yet', 'Long may it last~'],
+  ])(
+    'an empty %s board says so in its own words',
+    async (kind, title, description) => {
+      signIn()
+      vi.spyOn(api, 'get').mockResolvedValue({
+        data: {
+          success: true,
+          data: leaderboard([], { rank: 1, value: 0 }, { board: kind }),
+        },
+      })
+
+      renderBoard(kind, 'week')
+
+      expect(await screen.findByText(title)).toBeVisible()
+      expect(screen.getByText(description)).toBeVisible()
+      expect(screen.queryByRole('list', { name: 'Top three' })).toBeNull()
+    }
+  )
+
+  test.each<[LeaderboardBoard, string]>([
+    ['failed', 'No failed calls; long may it last~'],
+    ['success_streak', 'One successful call starts your streak~'],
+    ['fail_streak', 'No failed calls; long may it last~'],
+    ['balance', 'Check in to get on the board~'],
+  ])(
+    'a member not yet on the %s board is told what gets them on it',
+    async (kind, note) => {
+      signIn()
+      vi.spyOn(api, 'get').mockResolvedValue({
+        data: {
+          success: true,
+          data: leaderboard([[1, 4]], { rank: 2, value: 0 }, { board: kind }),
+        },
+      })
+
+      renderBoard(kind, 'week')
+
+      const place = await screen.findByRole('complementary', {
+        name: 'My place',
+      })
+      expect(place).toHaveTextContent('Not on the board yet')
+      expect(place).toHaveTextContent(note)
+    }
+  )
 
   test('a board that fails to load can be retried', async () => {
     signIn()

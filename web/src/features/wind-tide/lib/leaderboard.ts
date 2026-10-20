@@ -4,7 +4,20 @@ Copyright (C) 2026 风与潮之夜 (Night of Wind & Tide) contributors
 Part of a modified version of new-api by QuantumNous, licensed under the GNU
 Affero General Public License v3.0 or later. See the LICENSE file.
 */
-import type { Leaderboard } from '../types'
+import type { Leaderboard, LeaderboardBoard } from '../types'
+
+/**
+ * The boards counted over a period, today, the last 7 days or all time; the
+ * streak and balance boards stand for the moment and have none.
+ */
+export function boardHasPeriod(board: LeaderboardBoard): boolean {
+  return board === 'calls' || board === 'failed'
+}
+
+/** The boards whose value is the longest run, shown beside the run right now. */
+export function boardIsStreak(board: LeaderboardBoard): boolean {
+  return board === 'success_streak' || board === 'fail_streak'
+}
 
 /**
  * How much the requester lacks to draw level with the place right above

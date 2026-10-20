@@ -52,7 +52,16 @@ export type CheckinResult = CheckinResponse & {
   streak: number
 }
 
-export type LeaderboardBoard = 'calls' | 'balance'
+/**
+ * The members' boards (wind-tide/API.md §7): successful and failed calls over
+ * a period, the longest runs of each, and the balance of the moment.
+ */
+export type LeaderboardBoard =
+  | 'calls'
+  | 'failed'
+  | 'success_streak'
+  | 'fail_streak'
+  | 'balance'
 
 export type LeaderboardPeriod = 'today' | 'week' | 'all'
 
@@ -61,13 +70,18 @@ export type LeaderboardItem = {
   user_id: number
   display_name: string
   avatar_url: string
-  /** Successful calls on the calls board, raw quota on the balance board. */
+  /**
+   * Calls on the calls and failed boards, the longest run on the streak
+   * boards, raw quota on the balance board.
+   */
   value: number
+  /** On a streak board, the member's run right now; left out when it is 0. */
+  current?: number
 }
 
 export type Leaderboard = {
   board: LeaderboardBoard
-  /** Empty on the balance board, which has no period. */
+  /** Empty on the streak and balance boards, which have no period. */
   period: LeaderboardPeriod | ''
   items: LeaderboardItem[]
   /** The requester's own place; null for the owner, who is not ranked. */
@@ -135,10 +149,14 @@ export type GateRefusal = {
 }
 
 // wind-tide: donated Antigravity accounts (wind-tide/API.md §14) and donated
-// AI Studio accounts (§15). Both kinds share the donations list.
+// AI Studio accounts, to the AIS playground pool or the BUILD pool (§15).
+// All three kinds share the donations list.
 
 /** Which pool a donated account went to. */
-export type DonationProvider = 'antigravity' | 'aistudio'
+export type DonationProvider = 'antigravity' | 'aistudio' | 'build'
+
+/** The pools fed with the Cookie of a signed-in AI Studio page. */
+export type CookieProvider = Exclude<DonationProvider, 'antigravity'>
 
 export type DonationStatus = 'verifying' | 'active' | 'failed'
 
@@ -222,7 +240,30 @@ export type AisDonation = DonationRecord & {
   pool: AisDonationPool | null
 }
 
-export type Donation = AntigravityDonation | AisDonation
+/** The BUILD pool's verdict on an active donation (wind-tide/API.md §15). */
+export type BuildPoolState = 'available' | 'expired' | 'invalid' | 'missing'
+
+export type BuildDonationPool = {
+  state: BuildPoolState
+  /** An English message key for the state. */
+  message: string
+  /** The account's slot in the pool: the number of its sign-in file. */
+  index: number
+  /** Whether the pool is serving requests with this account right now. */
+  current: boolean
+  /** Whether the pool has a browser context open for this account. */
+  has_context: boolean
+}
+
+export type BuildDonation = DonationRecord & {
+  provider: 'build'
+  /** Always empty: the BUILD pool never reads the account's email. */
+  email: string
+  /** Only an active donation has one. */
+  pool: BuildDonationPool | null
+}
+
+export type Donation = AntigravityDonation | AisDonation | BuildDonation
 
 export type DonationList = {
   max: number
@@ -297,11 +338,16 @@ export type AntigravityPoolLevel = {
   buckets: PoolBucketAverage[]
 }
 
-/** One AIS PG model: the member's calls today and its public pool. */
+/** One pool model: the member's calls today and its public pool. */
 export type AisModelPool = {
-  /** The upstream name, `gemini-4-argon`: the key the API takes. */
+  /** The pool the model belongs to: the AIS playground or BUILD. */
+  provider: CookieProvider
+  /**
+   * The ledger key the API takes: the upstream name, `gemini-4-argon`, in
+   * the AIS playground pool, the relay name in the BUILD pool.
+   */
   model: string
-  /** What members call it: `AIS PG-gemini-4-argon`. */
+  /** What members call it: `AIS PG-gemini-4-argon`, `Build-gemini-3.8-flash`. */
   relay_model: string
   /** Calls a day each active account adds. */
   per_account: number
@@ -315,16 +361,22 @@ export type AisModelPool = {
   remaining: number
   /** How many more calls the member may take from the pool today. */
   take_left: number
+  /** What the public pool holds right now: given minus taken today. */
   pool_balance: number
+  /** Everything members gave to the public pool today. */
+  pool_given: number
+  /** Everything members took from the public pool today. */
+  pool_taken: number
 }
 
-/** The member's own AIS PG calls today and the public pools, per model. */
+/** The member's own calls today in one pool and its public pools, per model. */
 export type AisPoolStatus = {
+  provider: CookieProvider
   /** Beijing-time `YYYY-MM-DD`. */
   day: string
-  /** The member's active AI Studio accounts; 0 for a non-donor. */
+  /** The member's active accounts in this pool; 0 for a non-donor. */
   accounts: number
-  /** In the site's order: argon first. */
+  /** In the site's order: argon first in the AIS playground. */
   models: AisModelPool[]
 }
 
@@ -335,6 +387,10 @@ export type PoolEventKind =
   | 'ais_account_removed'
   | 'ais_given'
   | 'ais_taken'
+  | 'build_account_donated'
+  | 'build_account_removed'
+  | 'build_given'
+  | 'build_taken'
 
 export type PoolEvent = {
   id: number
@@ -352,8 +408,10 @@ export type PoolEvent = {
 export type PoolOverview = {
   /** Null when the site has no Antigravity pool. */
   antigravity: AntigravityPoolLevel | null
-  /** Null when the site has no AI Studio pool. */
+  /** Null when the site has no AIS playground pool. */
   aistudio: AisPoolStatus | null
+  /** Null when the site has no BUILD pool. */
+  build: AisPoolStatus | null
   /** The latest 50, newest first. */
   events: PoolEvent[]
 }
@@ -376,27 +434,4 @@ export type AisGiveResult = {
 
 export type AisTakeResult = AisGiveResult & {
   take_left: number
-}
-
-export type AisLeaderboardEntry = {
-  rank: number
-  display_name: string
-  count: number
-}
-
-export type AisLeaderboardLists = {
-  calls: AisLeaderboardEntry[]
-  failed: AisLeaderboardEntry[]
-}
-
-export type AisModelLeaderboard = {
-  model: string
-  relay_model: string
-  today: AisLeaderboardLists
-  total: AisLeaderboardLists
-}
-
-/** Both boards of every AIS PG model, in the site's order. */
-export type AisLeaderboard = {
-  models: AisModelLeaderboard[]
 }

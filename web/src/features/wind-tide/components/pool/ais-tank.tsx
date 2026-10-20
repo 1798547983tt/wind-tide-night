@@ -13,10 +13,11 @@ import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
+import { COOKIE_POOL_TEXTS } from '../../lib/donation'
 import { aisLevel } from '../../lib/pool'
-import type { AisModelPool, AisPoolStatus } from '../../types'
+import type { AisModelPool, AisPoolStatus, CookieProvider } from '../../types'
 import { AisTransferDialog, type TransferMode } from './ais-transfer-dialog'
-import { PoolTank, TankGauge } from './pool-tank'
+import { PoolTank, TankGauge, type TankTone } from './pool-tank'
 
 type AisTankProps = {
   status: AisPoolStatus
@@ -28,16 +29,23 @@ type DialogState = {
   pool: AisModelPool
 } | null
 
+/** The liquid of each Cookie pool: sun gold for the playground, matcha for BUILD. */
+const TANK_TONES: Record<CookieProvider, TankTone> = {
+  aistudio: 'sun',
+  build: 'matcha',
+}
+
 /**
- * The AI Studio panel (wind-tide/API.md §15): a gauge per AIS PG model with
- * the member's calls for today beside the public pool's, each with its own
- * Give and Take. A donor gives and takes; anyone else sees the panel behind
- * glass with the way in.
+ * The panel of a Cookie pool, the AIS playground or BUILD (wind-tide/API.md
+ * §15): a gauge per model with the member's calls for today beside the
+ * public pool's, each with its own Give and Take. A donor gives and takes;
+ * anyone else sees the panel behind glass with the way in.
  */
 export function AisTank(props: AisTankProps) {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const status = props.status
+  const texts = COOKIE_POOL_TEXTS[status.provider]
   const donor = status.accounts > 0
   // A key per opening, so every dialog starts with an empty box.
   const [dialog, setDialog] = useState<DialogState>(null)
@@ -52,21 +60,21 @@ export function AisTank(props: AisTankProps) {
     overlay = (
       <Link
         to='/donations'
-        search={{ tab: 'aistudio' }}
+        search={{ tab: status.provider }}
         className={cn(buttonVariants(), 'font-mincho')}
       >
-        {t('Donate an AI Studio account to unlock')}
+        {t(texts.unlock)}
       </Link>
     )
   }
 
   return (
     <>
-      <PoolTank tone='sun' overlay={overlay}>
+      <PoolTank tone={TANK_TONES[status.provider]} overlay={overlay}>
         <div className='space-y-5'>
           <div className='flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1'>
             <p className='text-muted-foreground text-xs font-medium tracking-[0.2em] uppercase'>
-              {t('AIS playground')}
+              {t(texts.name)}
             </p>
             <p className='text-muted-foreground text-xs'>
               {t('Your active accounts: {{count}}', {
@@ -100,9 +108,8 @@ export function AisTank(props: AisTankProps) {
                   })}
                 </p>
                 <p className='text-muted-foreground text-xs'>
-                  {t('Used today: {{calls}} · failed {{failed}}', {
+                  {t('Used today: {{calls}}', {
                     calls: formatNumber(pool.calls, locale),
-                    failed: formatNumber(pool.failed_today, locale),
                   })}
                 </p>
                 {donor && (

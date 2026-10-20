@@ -37,7 +37,7 @@ function PersonalNav() {
   )
 }
 
-type PoolFlags = { donation?: boolean; ais?: boolean }
+type PoolFlags = { donation?: boolean; ais?: boolean; build?: boolean }
 
 async function renderSidebar(flags: PoolFlags) {
   const client = new QueryClient({
@@ -49,6 +49,7 @@ async function renderSidebar(flags: PoolFlags) {
     SidebarModulesAdmin: '',
     wt_donation_enabled: flags.donation === true,
     wt_ais_enabled: flags.ais === true,
+    wt_build_enabled: flags.build === true,
   })
   useAuthStore.getState().auth.setUser({
     id: 1,
@@ -91,6 +92,13 @@ describe('the donated accounts entry in the sidebar', () => {
 
   test('also appears when the site runs only the AI Studio pool', async () => {
     await renderSidebar({ ais: true })
+    expect(
+      await screen.findByRole('link', { name: 'Donated accounts' })
+    ).toHaveAttribute('href', '/donations')
+  })
+
+  test('also appears when the site runs only the BUILD pool', async () => {
+    await renderSidebar({ build: true })
     expect(
       await screen.findByRole('link', { name: 'Donated accounts' })
     ).toHaveAttribute('href', '/donations')

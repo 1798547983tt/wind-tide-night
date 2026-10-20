@@ -11,10 +11,16 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { api } from '@/lib/api'
 
-import type { AisDonation, AisDonationPool } from '../../../types'
+import type {
+  AisDonation,
+  AisDonationPool,
+  BuildDonation,
+  BuildDonationPool,
+  CookieProvider,
+} from '../../../types'
 import { AisDonationPage } from '../ais-donation-page'
 
-let items: AisDonation[]
+let items: (AisDonation | BuildDonation)[]
 let listCalls: number
 
 function pool(overrides: Partial<AisDonationPool> = {}): AisDonationPool {
@@ -49,13 +55,44 @@ function donation(
   }
 }
 
-function renderPage() {
+function buildPool(
+  overrides: Partial<BuildDonationPool> = {}
+): BuildDonationPool {
+  return {
+    state: 'available',
+    message: 'Available',
+    index: 3,
+    current: false,
+    has_context: true,
+    ...overrides,
+  }
+}
+
+function buildDonation(
+  id: number,
+  overrides: Partial<BuildDonation> = {}
+): BuildDonation {
+  return {
+    id,
+    provider: 'build',
+    email: '',
+    status: 'active',
+    fail_reason: '',
+    pool: buildPool({ index: id }),
+    last_test: null,
+    created_at: 1760000000 + id,
+    verified_at: 1760000100 + id,
+    ...overrides,
+  }
+}
+
+function renderPage(provider: CookieProvider = 'aistudio') {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   render(
     <QueryClientProvider client={client}>
-      <AisDonationPage />
+      <AisDonationPage provider={provider} />
     </QueryClientProvider>
   )
 }
@@ -312,5 +349,118 @@ describe('the AIS playground page', () => {
     expect(
       screen.getByText('You have reached the limit of 10 donated accounts')
     ).toBeInTheDocument()
+  })
+})
+
+describe('the BUILD page', () => {
+  test('with nothing donated it shows its own words and asks for its own donations', async () => {
+    renderPage('build')
+    expect(await screen.findByText('No BUILD accounts yet')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'BUILD' })).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /every account you donate gives you 100 Build-gemini-3.8-flash calls a day/
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Donate a BUILD account' })
+    ).toBeEnabled()
+    expect(api.get).toHaveBeenCalledWith('/api/wt/donations', {
+      params: { provider: 'build' },
+    })
+    expect(screen.queryByText('AIS playground')).not.toBeInTheDocument()
+  })
+
+  test('accounts go by their slot, with the pool state and whose turn it is', async () => {
+    items = [
+      buildDonation(1, { pool: buildPool({ index: 1, current: true }) }),
+      buildDonation(2),
+      buildDonation(3, {
+        pool: buildPool({
+          index: 3,
+          state: 'expired',
+          message:
+            'The pool can no longer sign in with this account; remove it and donate again',
+        }),
+      }),
+      buildDonation(4, {
+        pool: buildPool({
+          index: 4,
+          state: 'invalid',
+          message: 'The pool could not read the sign-in of this account',
+        }),
+      }),
+      buildDonation(5, {
+        pool: buildPool({
+          index: 5,
+          state: 'missing',
+          message: 'The pool no longer has this account',
+        }),
+      }),
+      buildDonation(6, { status: 'verifying', pool: null, verified_at: 0 }),
+    ]
+    renderPage('build')
+    await screen.findByText('BUILD account #1')
+
+    const serving = cardOf('BUILD account #1')
+    expect(within(serving).getByText('Available')).toBeInTheDocument()
+    expect(within(serving).getByText('Slot 1 in the pool')).toBeInTheDocument()
+    expect(
+      within(serving).getByText('Serving requests right now')
+    ).toBeInTheDocument()
+    const waiting = cardOf('BUILD account #2')
+    expect(
+      within(waiting).getByText('Waiting its turn in the rotation')
+    ).toBeInTheDocument()
+
+    const expired = cardOf('BUILD account #3')
+    expect(within(expired).getByText('Sign-in expired')).toBeInTheDocument()
+    expect(
+      within(expired).getByText(
+        'The pool can no longer sign in with this account; remove it and donate again'
+      )
+    ).toBeInTheDocument()
+    expect(within(expired).queryByText(/turn/)).not.toBeInTheDocument()
+    expect(
+      within(cardOf('BUILD account #4')).getByText('Unreadable')
+    ).toBeInTheDocument()
+    expect(
+      within(cardOf('BUILD account #5')).getByText('Not in the pool')
+    ).toBeInTheDocument()
+
+    // A row the pool has not placed yet has no slot, and no email either way.
+    const pending = cardOf('BUILD account')
+    expect(within(pending).getByText('Verifying')).toBeInTheDocument()
+    expect(screen.queryByText('Google account')).not.toBeInTheDocument()
+    expect(screen.queryByText(/@/)).not.toBeInTheDocument()
+
+    expect(
+      screen.queryByRole('button', { name: 'Authorize again' })
+    ).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Test' })).toHaveLength(5)
+    expect(screen.getByText('Donated 6 / 10')).toBeInTheDocument()
+  })
+
+  test('Remove explains that the sign-in goes too, then calls the server', async () => {
+    items = [buildDonation(1)]
+    renderPage('build')
+    await screen.findByText('BUILD account #1')
+    await userEvent.click(
+      within(cardOf('BUILD account #1')).getByRole('button', {
+        name: 'Remove',
+      })
+    )
+    const confirm = await screen.findByRole('alertdialog')
+    expect(
+      within(confirm).getByText(
+        'The account leaves the pool now and its sign-in is deleted. You can donate it again later.'
+      )
+    ).toBeInTheDocument()
+    await userEvent.click(
+      within(confirm).getByRole('button', { name: 'Remove' })
+    )
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith('/api/wt/donations/1/remove')
+    )
   })
 })

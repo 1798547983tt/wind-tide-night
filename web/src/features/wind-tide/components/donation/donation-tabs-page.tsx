@@ -22,9 +22,9 @@ const route = getRouteApi('/_authenticated/donations/')
 
 /**
  * The donated accounts page (wind-tide/API.md §15): the Antigravity pool,
- * the AI Studio pool and the compute pool dashboard, one per tab. The tab
- * lives in the address, so a link opens the same one; a tab the site does
- * not offer falls back to the first it does.
+ * the AI Studio pool, the BUILD pool and the compute pool dashboard, one per
+ * tab. The tab lives in the address, so a link opens the same one; a tab the
+ * site does not offer falls back to the first it does.
  */
 export function DonationTabsPage() {
   const { status } = useStatus()
@@ -39,6 +39,8 @@ export function DonationTabsPage() {
   const strip = <DonationTabs value={tab} tabs={tabs} onChange={show} />
 
   if (tab === 'pool') return <PoolPage tabs={strip} />
-  if (tab === 'aistudio') return <AisDonationPage tabs={strip} />
+  if (tab === 'aistudio' || tab === 'build') {
+    return <AisDonationPage provider={tab} tabs={strip} />
+  }
   return <DonationPage tabs={strip} />
 }
