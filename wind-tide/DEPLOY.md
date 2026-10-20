@@ -138,9 +138,13 @@ cd /opt/wind-tide && docker compose exec site /new-api wt emergency-login
 代码推到 `wind-tide` 分支并且 Actions 全部通过后：
 
 ```bash
-cd /opt/wind-tide && docker compose pull site && docker compose up -d site
-docker image prune -f   # 清掉旧镜像，省磁盘
+cd /opt/wind-tide
+docker tag "$(docker inspect --format '{{.Image}}' wind-tide-site-1)" wind-tide-site:previous   # 留着现在这版，随时能回滚
+docker compose pull site && docker compose up -d site
+docker image prune -f   # 清掉没有标签的旧镜像，省磁盘；wind-tide-site:previous 带标签，不会被清
 ```
+
+回滚：`docker tag wind-tide-site:previous ghcr.io/1798547983tt/wind-tide-night:latest && docker compose up -d site`。日志和磁盘的定期清理见 §12。
 
 ## 6. 备份与恢复
 
@@ -350,3 +354,15 @@ build.example.com {
 3. 验证：`curl -s https://<域名>/api/status` 里 `wt_build_enabled` 为 `true`；后台「渠道」里出现标签 `wt-build` 的渠道 `BUILD`（分组 `BUILD`、模型 `Build-gemini-3.8-flash`，站点每次启动都会把它改回约定值，见 `API.md` §15.2）；登录后「捐赠账号」页多出 BUILD 标签，算力池页多出 BUILD 水箱。
 4. 第一次有人捐成功后，用站长账号（不计次数）调一次 `Build-gemini-3.8-flash`，确认控制台那边能用 `gemini-3.8-flash`；要换模型只能改代码里的模型表（`WtAisModels`）。
 5. 回退：删掉这三行，`docker compose up -d site`。标签和水箱隐藏，渠道、分组和表留着无害；要彻底清理再手动删渠道。
+
+## 12. 日志与磁盘定期清理（可选）
+
+`wind-tide/deploy/wt-clean-logs.sh` 每 5 天跑一次：删 `logs` 表里 15 天前的调用、错误、系统记录（排行榜用的 `wt_call_days`、`wt_call_streaks`，算力池、公告、签到、用户表一概不碰；周榜只需要 7 天的日志）、删 5 天前没有容器在用的镜像和构建缓存（`wt-sqlite:latest` 和 `wind-tide-site:previous` 保留）、清空超过 20 MB 的容器日志、journal 只留 5 天或 100 MB、删 5 天前轮转出来的系统日志、清包管理器缓存。它只清 SQLite 站点的日志表；MySQL / PostgreSQL 请用后台「日志 → 清理历史日志」。
+
+```bash
+cp wind-tide/deploy/wt-clean-logs.sh /usr/local/bin/ && chmod 755 /usr/local/bin/wt-clean-logs.sh
+( crontab -l 2>/dev/null; echo '30 4 */5 * * /usr/local/bin/wt-clean-logs.sh >> /var/log/wt-clean-logs.log 2>&1' ) | crontab -
+/usr/local/bin/wt-clean-logs.sh   # 先手动跑一次看输出
+```
+
+`*/5` 是每月 1、6、11、16、21、26、31 日的 4:30（服务器时区）；每次的输出都追加在 `/var/log/wt-clean-logs.log`。
