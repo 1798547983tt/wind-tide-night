@@ -30,7 +30,7 @@ import (
 
 // wind-tide: regression tests of the AIS playground pool and the pool page
 // (wind-tide/API.md §15) against a scripted stand-in for aistudio-api's
-// management API.
+// management API; the BUILD pool has its own in wt_build_test.go.
 
 const (
 	wtTestAisPassword = "test-ais-console-password"
@@ -256,23 +256,32 @@ func wtAisModelOf(t *testing.T, balance *model.WtAisBalance, upstream string) mo
 	return model.WtAisModelBalance{}
 }
 
-// The model table of the group: two relay models, found by relay name or by
-// upstream key, exactly.
+// The model table of the pools: two AIS PG relay models keyed by their
+// upstream names and one BUILD relay model keyed by its own name, found by
+// relay name or by ledger key, exactly.
 func TestWtAisModelTable(t *testing.T) {
-	require.Len(t, model.WtAisModels, 2)
+	require.Len(t, model.WtAisModels, 3)
 	argon, ok := model.WtAisModelByName(wtAisArgonRelay)
 	require.True(t, ok)
-	assert.Equal(t, model.WtAisModelSpec{Name: wtAisArgonRelay, Upstream: wtAisArgon, CallsPerAccount: 50, TakeMaxPerDay: 100}, *argon)
-	flash, ok := model.WtAisModelByUpstream(wtAisFlash)
+	assert.Equal(t, model.WtAisModelSpec{Provider: model.WtAisProvider, Name: wtAisArgonRelay, Upstream: wtAisArgon, Key: wtAisArgon, CallsPerAccount: 50, TakeMaxPerDay: 100}, *argon)
+	flash, ok := model.WtAisModelByKey(wtAisFlash)
 	require.True(t, ok)
-	assert.Equal(t, model.WtAisModelSpec{Name: wtAisFlashRelay, Upstream: wtAisFlash, CallsPerAccount: 100, TakeMaxPerDay: 100}, *flash)
-	for _, spec := range model.WtAisModels {
+	assert.Equal(t, model.WtAisModelSpec{Provider: model.WtAisProvider, Name: wtAisFlashRelay, Upstream: wtAisFlash, Key: wtAisFlash, CallsPerAccount: 100, TakeMaxPerDay: 100}, *flash)
+	build, ok := model.WtAisModelByKey(wtBuildFlashRelay)
+	require.True(t, ok)
+	assert.Equal(t, model.WtAisModelSpec{Provider: model.WtBuildProvider, Name: wtBuildFlashRelay, Upstream: wtAisFlash, Key: wtBuildFlashRelay, CallsPerAccount: 100, TakeMaxPerDay: 100}, *build, "the BUILD ledger has its own key, as its upstream is the AIS flash model")
+	aisSpecs := model.WtAisModelsOf(model.WtAisProvider)
+	require.Len(t, aisSpecs, 2)
+	for _, spec := range aisSpecs {
 		assert.Equal(t, service.WtAisModelPrefix+spec.Upstream, spec.Name, "the relay name is the prefixed upstream name")
 	}
+	buildSpecs := model.WtAisModelsOf(model.WtBuildProvider)
+	require.Len(t, buildSpecs, 1)
+	assert.Equal(t, service.WtBuildModelPrefix+wtAisFlash, buildSpecs[0].Name)
 	_, ok = model.WtAisModelByName(wtAisArgon)
-	assert.False(t, ok, "upstream keys are not relay names")
-	_, ok = model.WtAisModelByUpstream(wtAisArgonRelay)
-	assert.False(t, ok, "relay names are not upstream keys")
+	assert.False(t, ok, "ledger keys are not relay names")
+	_, ok = model.WtAisModelByKey(wtAisArgonRelay)
+	assert.False(t, ok, "AIS PG relay names are not ledger keys")
 	_, ok = model.WtAisModelByName(wtAisArgonRelay + " ")
 	assert.False(t, ok, "exact match")
 }
@@ -312,7 +321,7 @@ func TestWtAisCookieParsing(t *testing.T) {
 // least one pool.
 func TestWtAisDisabledWithoutPool(t *testing.T) {
 	forEachWtDatabase(t, func(t *testing.T) {
-		for _, name := range []string{"WT_CPA_URL", "WT_CPA_MANAGEMENT_KEY", "WT_AIS_URL", "WT_AIS_PASSWORD", "WT_AIS_API_KEY"} {
+		for _, name := range []string{"WT_CPA_URL", "WT_CPA_MANAGEMENT_KEY", "WT_AIS_URL", "WT_AIS_PASSWORD", "WT_AIS_API_KEY", "WT_BUILD_URL", "WT_BUILD_PASSWORD", "WT_BUILD_API_KEY"} {
 			t.Setenv(name, "")
 		}
 		member := createWtUser(t, model.User{Username: "donor"})
@@ -322,13 +331,12 @@ func TestWtAisDisabledWithoutPool(t *testing.T) {
 		var data map[string]any
 		require.NoError(t, common.Unmarshal(status.Data, &data))
 		assert.Equal(t, false, data["wt_ais_enabled"])
+		assert.Equal(t, false, data["wt_build_enabled"])
 
 		const notConfigured = "The AIS playground pool is not configured"
 		_, response := wtAisDonate(t, session, "SID=abc")
 		assert.Equal(t, notConfigured, response.Message)
 		_, response = wtAisCall(t, session, WtGiveAisCalls, http.MethodPost, "/api/wt/pool/ais/give", wtAisMoveBody(wtAisArgon, 1))
-		assert.Equal(t, notConfigured, response.Message)
-		_, response = wtAisCall(t, session, WtGetAisLeaderboard, http.MethodGet, "/api/wt/pool/ais/leaderboard", "")
 		assert.Equal(t, notConfigured, response.Message)
 		_, response = wtAisCall(t, session, WtListDonations, http.MethodGet, "/api/wt/donations?provider=aistudio", "")
 		assert.Equal(t, notConfigured, response.Message)
@@ -344,16 +352,28 @@ func TestWtAisDisabledWithoutPool(t *testing.T) {
 		require.NoError(t, common.Unmarshal(status.Data, &data))
 		assert.Equal(t, true, data["wt_ais_enabled"])
 
+		// The BUILD pool stays off on its own: its model, its donations and
+		// its list answer the BUILD message while the AIS pool works.
+		const buildNotConfigured = "The BUILD pool is not configured"
+		_, response = wtAisCall(t, session, WtGiveAisCalls, http.MethodPost, "/api/wt/pool/ais/give", wtAisMoveBody(wtBuildFlashRelay, 1))
+		assert.Equal(t, buildNotConfigured, response.Message)
+		_, response = wtBuildDonate(t, session, "SID=abc")
+		assert.Equal(t, buildNotConfigured, response.Message)
+		_, response = wtAisCall(t, session, WtListDonations, http.MethodGet, "/api/wt/donations?provider=build", "")
+		assert.Equal(t, buildNotConfigured, response.Message)
+
 		// The pool page works with the AI Studio pool alone: one balance per
 		// model, in table order, empty for a member without accounts.
 		pool := wtReadPool(t, session)
 		assert.Nil(t, pool.Antigravity)
+		assert.Nil(t, pool.Build)
 		require.NotNil(t, pool.Aistudio)
+		assert.Equal(t, model.WtAisProvider, pool.Aistudio.Provider)
 		assert.Equal(t, model.WtCheckinDay(model.WtNow()), pool.Aistudio.Day, "the day is a check-in day")
 		assert.Zero(t, pool.Aistudio.Accounts)
 		require.Len(t, pool.Aistudio.Models, 2)
-		assert.Equal(t, model.WtAisModelBalance{Model: wtAisArgon, RelayModel: wtAisArgonRelay, PerAccount: 50, TakeMax: 100, TakeLeft: 100}, pool.Aistudio.Models[0])
-		assert.Equal(t, model.WtAisModelBalance{Model: wtAisFlash, RelayModel: wtAisFlashRelay, PerAccount: 100, TakeMax: 100, TakeLeft: 100}, pool.Aistudio.Models[1])
+		assert.Equal(t, model.WtAisModelBalance{Provider: model.WtAisProvider, Model: wtAisArgon, RelayModel: wtAisArgonRelay, PerAccount: 50, TakeMax: 100, TakeLeft: 100}, pool.Aistudio.Models[0])
+		assert.Equal(t, model.WtAisModelBalance{Provider: model.WtAisProvider, Model: wtAisFlash, RelayModel: wtAisFlashRelay, PerAccount: 100, TakeMax: 100, TakeLeft: 100}, pool.Aistudio.Models[1])
 		assert.NotNil(t, pool.Events)
 	})
 }
@@ -728,11 +748,12 @@ func wtAisRelayCall(relay *gin.Engine, key string) *httptest.ResponseRecorder {
 // model's ledger: non-donors are refused, donors get the model's share per
 // active account a day, a failed upstream request is refunded and counted,
 // the owner is exempt, an unknown AIS PG model is refused and other models
-// are not touched.
-func TestWtAisGate(t *testing.T) {
+// are not touched. Every finished call moves the member's day counters and
+// streaks behind the leaderboards.
+func TestWtPoolGate(t *testing.T) {
 	forEachWtDatabase(t, func(t *testing.T) {
 		pinWtClock(t, wtDonationClock)
-		for _, name := range []string{"WT_AIS_URL", "WT_AIS_PASSWORD", "WT_AIS_API_KEY"} {
+		for _, name := range []string{"WT_AIS_URL", "WT_AIS_PASSWORD", "WT_AIS_API_KEY", "WT_BUILD_URL", "WT_BUILD_PASSWORD", "WT_BUILD_API_KEY"} {
 			t.Setenv(name, "")
 		}
 		var modelName atomic.Value
@@ -741,7 +762,7 @@ func TestWtAisGate(t *testing.T) {
 		relay := gin.New()
 		relay.POST("/v1/chat/completions", middleware.TokenAuth(), func(c *gin.Context) {
 			common.SetContextKey(c, constant.ContextKeyOriginalModel, modelName.Load().(string))
-		}, middleware.WtAisGate(), func(c *gin.Context) {
+		}, middleware.WtPoolGate(), func(c *gin.Context) {
 			if upstreamFails.Load() {
 				c.JSON(http.StatusBadGateway, gin.H{"error": "upstream"})
 				return
@@ -766,6 +787,11 @@ func TestWtAisGate(t *testing.T) {
 		recorder := wtAisRelayCall(relay, donorKey)
 		assert.Equal(t, http.StatusServiceUnavailable, recorder.Code)
 		assert.Contains(t, recorder.Body.String(), "The AIS playground pool is not configured")
+		modelName.Store(wtBuildFlashRelay)
+		recorder = wtAisRelayCall(relay, donorKey)
+		assert.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+		assert.Contains(t, recorder.Body.String(), "The BUILD pool is not configured")
+		modelName.Store(wtAisArgonRelay)
 
 		newWtFakeAis(t)
 		modelName.Store("AIS PG-gemini-9")
@@ -785,7 +811,7 @@ func TestWtAisGate(t *testing.T) {
 
 		// Each model has its own daily share: 50 argon calls, then 100 flash
 		// calls, each ledger untouched by the other model.
-		for _, spec := range model.WtAisModels {
+		for _, spec := range model.WtAisModelsOf(model.WtAisProvider) {
 			modelName.Store(spec.Name)
 			for i := range spec.CallsPerAccount {
 				recorder = wtAisRelayCall(relay, donorKey)
@@ -795,7 +821,7 @@ func TestWtAisGate(t *testing.T) {
 			recorder = wtAisRelayCall(relay, donorKey)
 			assert.Equal(t, http.StatusTooManyRequests, recorder.Code, spec.Upstream)
 			assert.Contains(t, recorder.Body.String(), "Your AIS PG calls for today are used up")
-			ledger := ledgerOf(donor.Id, spec.Upstream)
+			ledger := ledgerOf(donor.Id, spec.Key)
 			assert.Equal(t, spec.CallsPerAccount, ledger.Calls)
 			assert.Zero(t, ledger.Failed)
 			if spec.Upstream == wtAisArgon {
@@ -829,6 +855,31 @@ func TestWtAisGate(t *testing.T) {
 		assert.Equal(t, http.StatusNoContent, recorder.Code)
 		assert.Empty(t, recorder.Header().Get("X-WT-AIS-Remaining"))
 		assert.Zero(t, ledgerOf(owner.Id, wtAisFlash).Id, "the owner is not counted")
+
+		// Off the request path, every finished call moved the member's day
+		// counters and streaks: 150 calls on the first day, a failure and two
+		// calls on the second; the refused calls and the owner's did not.
+		model.WtFlushCallCounters()
+		dayOne, dayTwo := model.WtCheckinDay(wtDonationClock), model.WtCheckinDay(wtDonationClock.Add(24*time.Hour))
+		counters := func(userID int, day string) model.WtCallDay {
+			var row model.WtCallDay
+			require.NoError(t, model.DB.Where("user_id = ? AND day = ?", userID, day).Limit(1).Find(&row).Error)
+			return row
+		}
+		streakOf := func(userID int) model.WtCallStreak {
+			var row model.WtCallStreak
+			require.NoError(t, model.DB.Where("user_id = ?", userID).Limit(1).Find(&row).Error)
+			return row
+		}
+		first := counters(donor.Id, dayOne)
+		assert.Equal(t, model.WtCallDay{Id: first.Id, UserId: donor.Id, Day: dayOne, Calls: 150}, first)
+		second := counters(donor.Id, dayTwo)
+		assert.Equal(t, model.WtCallDay{Id: second.Id, UserId: donor.Id, Day: dayTwo, Calls: 2, Failed: 1}, second)
+		streak := streakOf(donor.Id)
+		assert.Equal(t, model.WtCallStreak{Id: streak.Id, UserId: donor.Id, SuccessRun: 2, BestSuccess: 150, BestFail: 1, UpdatedAt: wtDonationClock.Add(24 * time.Hour).Unix()}, streak)
+		assert.EqualValues(t, 1, counters(stranger.Id, dayOne).Calls, "a call of another model counts too")
+		assert.EqualValues(t, 1, streakOf(stranger.Id).BestSuccess)
+		assert.Zero(t, counters(owner.Id, dayTwo).Id, "the owner is not counted")
 	})
 }
 
@@ -836,6 +887,7 @@ func TestWtAisGate(t *testing.T) {
 type wtAisPoolReply struct {
 	Antigravity *service.WtPoolLevel `json:"antigravity"`
 	Aistudio    *model.WtAisBalance  `json:"aistudio"`
+	Build       *model.WtAisBalance  `json:"build"`
 	Events      []model.WtPoolEvent  `json:"events"`
 }
 
@@ -962,12 +1014,12 @@ func TestWtAisGiveAndTake(t *testing.T) {
 		require.NotNil(t, pool.Aistudio)
 		assert.Equal(t, "2026-10-15", pool.Aistudio.Day)
 		assert.Equal(t, 1, pool.Aistudio.Accounts)
-		assert.Equal(t, model.WtAisModelBalance{Model: wtAisArgon, RelayModel: wtAisArgonRelay, PerAccount: 50, TakeMax: 100, Allowance: 10, Calls: 10, Given: 40, Remaining: 0, TakeLeft: 100}, wtAisModelOf(t, pool.Aistudio, wtAisArgon))
-		assert.Equal(t, model.WtAisModelBalance{Model: wtAisFlash, RelayModel: wtAisFlashRelay, PerAccount: 100, TakeMax: 100, Allowance: 40, Calls: 1, Given: 60, Remaining: 39, TakeLeft: 100}, wtAisModelOf(t, pool.Aistudio, wtAisFlash))
+		assert.Equal(t, model.WtAisModelBalance{Provider: model.WtAisProvider, Model: wtAisArgon, RelayModel: wtAisArgonRelay, PerAccount: 50, TakeMax: 100, Allowance: 10, Calls: 10, Given: 40, Remaining: 0, TakeLeft: 100, PoolGiven: 40, PoolTaken: 40}, wtAisModelOf(t, pool.Aistudio, wtAisArgon))
+		assert.Equal(t, model.WtAisModelBalance{Provider: model.WtAisProvider, Model: wtAisFlash, RelayModel: wtAisFlashRelay, PerAccount: 100, TakeMax: 100, Allowance: 40, Calls: 1, Given: 60, Remaining: 39, TakeLeft: 100, PoolGiven: 60, PoolTaken: 60}, wtAisModelOf(t, pool.Aistudio, wtAisFlash))
 		pool = wtReadPool(t, sessions[bob.Id])
 		assert.Equal(t, 2, pool.Aistudio.Accounts)
-		assert.Equal(t, model.WtAisModelBalance{Model: wtAisArgon, RelayModel: wtAisArgonRelay, PerAccount: 50, TakeMax: 100, Allowance: 140, Taken: 40, Remaining: 140, TakeLeft: 60}, wtAisModelOf(t, pool.Aistudio, wtAisArgon))
-		assert.Equal(t, model.WtAisModelBalance{Model: wtAisFlash, RelayModel: wtAisFlashRelay, PerAccount: 100, TakeMax: 100, Allowance: 260, Taken: 60, Remaining: 260, TakeLeft: 40}, wtAisModelOf(t, pool.Aistudio, wtAisFlash))
+		assert.Equal(t, model.WtAisModelBalance{Provider: model.WtAisProvider, Model: wtAisArgon, RelayModel: wtAisArgonRelay, PerAccount: 50, TakeMax: 100, Allowance: 140, Taken: 40, Remaining: 140, TakeLeft: 60, PoolGiven: 40, PoolTaken: 40}, wtAisModelOf(t, pool.Aistudio, wtAisArgon))
+		assert.Equal(t, model.WtAisModelBalance{Provider: model.WtAisProvider, Model: wtAisFlash, RelayModel: wtAisFlashRelay, PerAccount: 100, TakeMax: 100, Allowance: 260, Taken: 60, Remaining: 260, TakeLeft: 40, PoolGiven: 60, PoolTaken: 60}, wtAisModelOf(t, pool.Aistudio, wtAisFlash))
 		require.Len(t, pool.Events, 6)
 		for i, want := range []struct {
 			kind, name, model string
@@ -1009,61 +1061,14 @@ func TestWtAisGiveAndTake(t *testing.T) {
 	})
 }
 
-// The leaderboards sum the ledgers of each model per member for today and
-// for all time, show the display name or the username, leave zero counts out
-// and rank the top twenty; the feed keeps the newest 200 and serves what is
-// newer than an id.
-func TestWtAisLeaderboardAndEvents(t *testing.T) {
+// The feed keeps the newest 200 announcements, cuts long names, and serves
+// what is newer than an id.
+func TestWtPoolEvents(t *testing.T) {
 	forEachWtDatabase(t, func(t *testing.T) {
 		pinWtClock(t, wtDonationClock)
 		newWtFakeAis(t)
 		alice := createWtUser(t, model.User{Username: "alice", DisplayName: "Alice"})
-		bob := createWtUser(t, model.User{Username: "bob"})
-		carol := createWtUser(t, model.User{Username: "carol", DisplayName: "  "})
 		dave := createWtUser(t, model.User{Username: "dave"})
-		today, yesterday := model.WtCheckinDay(wtDonationClock), model.WtCheckinDay(wtDonationClock.Add(-24*time.Hour))
-		for _, ledger := range []model.WtAisLedger{
-			{UserId: alice.Id, Day: today, Model: wtAisArgon, Calls: 30, Failed: 1},
-			{UserId: bob.Id, Day: today, Model: wtAisArgon, Calls: 45},
-			{UserId: carol.Id, Day: today, Model: wtAisArgon, Calls: 10, Failed: 7},
-			{UserId: dave.Id, Day: today, Model: wtAisArgon},
-			{UserId: alice.Id, Day: yesterday, Model: wtAisArgon, Calls: 100},
-			{UserId: carol.Id, Day: yesterday, Model: wtAisArgon, Failed: 3},
-			{UserId: bob.Id, Day: today, Model: wtAisFlash, Calls: 12},
-			{UserId: alice.Id, Day: yesterday, Model: wtAisFlash, Failed: 1},
-		} {
-			require.NoError(t, model.DB.Create(&ledger).Error)
-		}
-
-		_, response := wtAisCall(t, wtSession(t, dave.Id), WtGetAisLeaderboard, http.MethodGet, "/api/wt/pool/ais/leaderboard", "")
-		require.True(t, response.Success, response.Message)
-		var board struct {
-			Models []model.WtAisModelLeaderboard `json:"models"`
-		}
-		require.NoError(t, common.Unmarshal(response.Data, &board))
-		entry := func(rank int, name string, count int) model.WtAisLeaderboardEntry {
-			return model.WtAisLeaderboardEntry{Rank: rank, DisplayName: name, Count: count}
-		}
-		require.Len(t, board.Models, 2, "one request answers both models")
-		argon, flash := board.Models[0], board.Models[1]
-		assert.Equal(t, wtAisArgon, argon.Model)
-		assert.Equal(t, wtAisArgonRelay, argon.RelayModel)
-		assert.Equal(t, []model.WtAisLeaderboardEntry{entry(1, "bob", 45), entry(2, "Alice", 30), entry(3, "carol", 10)}, argon.Today.Calls)
-		assert.Equal(t, []model.WtAisLeaderboardEntry{entry(1, "carol", 7), entry(2, "Alice", 1)}, argon.Today.Failed)
-		assert.Equal(t, []model.WtAisLeaderboardEntry{entry(1, "Alice", 130), entry(2, "bob", 45), entry(3, "carol", 10)}, argon.Total.Calls)
-		assert.Equal(t, []model.WtAisLeaderboardEntry{entry(1, "carol", 10), entry(2, "Alice", 1)}, argon.Total.Failed)
-		assert.Equal(t, wtAisFlash, flash.Model)
-		assert.Equal(t, wtAisFlashRelay, flash.RelayModel)
-		assert.Equal(t, []model.WtAisLeaderboardEntry{entry(1, "bob", 12)}, flash.Today.Calls)
-		assert.Empty(t, flash.Today.Failed)
-		assert.Equal(t, []model.WtAisLeaderboardEntry{entry(1, "bob", 12)}, flash.Total.Calls)
-		assert.Equal(t, []model.WtAisLeaderboardEntry{entry(1, "Alice", 1)}, flash.Total.Failed)
-
-		top, err := model.WtAisLeaderboard(today, wtAisArgon, 2)
-		require.NoError(t, err)
-		assert.Len(t, top.Today.Calls, 2)
-		_, err = model.WtAisLeaderboard(today, "gemini-9", 2)
-		assert.ErrorIs(t, err, model.ErrWtAisUnknownModel)
 
 		longName := strings.Repeat("名", 70)
 		for i := range 205 {
@@ -1086,7 +1091,7 @@ func TestWtAisLeaderboardAndEvents(t *testing.T) {
 		require.Len(t, newer, 3)
 		assert.Equal(t, events[0].Id, newer[0].Id)
 
-		_, response = wtAisCall(t, wtSession(t, dave.Id), WtListPoolEvents, http.MethodGet, "/api/wt/pool/events?after="+strconv.Itoa(events[1].Id), "")
+		_, response := wtAisCall(t, wtSession(t, dave.Id), WtListPoolEvents, http.MethodGet, "/api/wt/pool/events?after="+strconv.Itoa(events[1].Id), "")
 		require.True(t, response.Success, response.Message)
 		var feed struct {
 			Items []model.WtPoolEvent `json:"items"`
@@ -1196,7 +1201,7 @@ func TestWtEnsureAisChannel(t *testing.T) {
 		}
 		want := []string{}
 		for _, group := range []string{"default", "vip", "svip", "AIS PG"} {
-			for _, spec := range model.WtAisModels {
+			for _, spec := range model.WtAisModelsOf(model.WtAisProvider) {
 				want = append(want, group+"|"+spec.Name)
 			}
 		}

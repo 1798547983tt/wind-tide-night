@@ -14,18 +14,16 @@ import (
 )
 
 // wind-tide: the pool page (wind-tide/API.md §15): the level of the
-// Antigravity pool, the member's AIS PG calls per model and the public pools
-// they can give to and take from, the announcement feed and the leaderboards.
+// Antigravity pool, the member's calls per model in the AIS PG and BUILD
+// pools with the public pools they can give to and take from, and the
+// announcement feed.
 
-const (
-	wtPoolEventsPage      = 50
-	wtAisLeaderboardLimit = 20
-)
+const wtPoolEventsPage = 50
 
 // wtPoolReady answers the disabled message unless the site is wired to at
 // least one pool.
 func wtPoolReady(c *gin.Context) bool {
-	if service.WtDonationEnabled() || service.WtAisEnabled() {
+	if service.WtDonationEnabled() || service.WtAisEnabled() || service.WtBuildEnabled() {
 		return true
 	}
 	common.ApiError(c, errWtDonationDisabled)
@@ -42,23 +40,53 @@ func wtAisReady(c *gin.Context) bool {
 	return false
 }
 
+// wtBuildReady answers the not-configured message unless the site is wired
+// to a BUILD pool.
+func wtBuildReady(c *gin.Context) bool {
+	if service.WtBuildEnabled() {
+		return true
+	}
+	common.ApiError(c, service.ErrWtBuildNotConfigured)
+	return false
+}
+
+// wtSpecReady answers the not-configured message of the model's pool unless
+// that pool is wired.
+func wtSpecReady(c *gin.Context, spec *model.WtAisModelSpec) bool {
+	if spec.Provider == model.WtBuildProvider {
+		return wtBuildReady(c)
+	}
+	return wtAisReady(c)
+}
+
 // WtGetPool is the pool page in one read: each tank is null while its pool
 // is not configured.
 func WtGetPool(c *gin.Context) {
 	if !wtPoolReady(c) {
 		return
 	}
-	reply := gin.H{"antigravity": nil, "aistudio": nil}
+	reply := gin.H{"antigravity": nil, "aistudio": nil, "build": nil}
 	if service.WtDonationEnabled() {
 		reply["antigravity"] = service.WtPoolLevelSnapshot()
 	}
-	if service.WtAisEnabled() {
-		balance, err := model.WtAisBalanceOfDay(c.GetInt("id"), model.WtCheckinDay(model.WtNow()))
+	day := model.WtCheckinDay(model.WtNow())
+	for _, pool := range []struct {
+		key      string
+		provider string
+		enabled  bool
+	}{
+		{"aistudio", model.WtAisProvider, service.WtAisEnabled()},
+		{"build", model.WtBuildProvider, service.WtBuildEnabled()},
+	} {
+		if !pool.enabled {
+			continue
+		}
+		balance, err := model.WtAisBalanceOfDay(c.GetInt("id"), day, pool.provider)
 		if err != nil {
 			common.ApiError(c, err)
 			return
 		}
-		reply["aistudio"] = balance
+		reply[pool.key] = balance
 	}
 	events, err := model.WtListPoolEvents(0, wtPoolEventsPage)
 	if err != nil {
@@ -70,8 +98,8 @@ func WtGetPool(c *gin.Context) {
 }
 
 // wtAisMoveOf reads the {model, count} body of a give or take: the model must
-// be one of the pool's upstream models, the count a whole number of 1 or
-// more.
+// be the ledger key of a pool model whose pool is configured, the count a
+// whole number of 1 or more.
 func wtAisMoveOf(c *gin.Context) (*model.WtAisModelSpec, int, bool) {
 	var input struct {
 		Model string `json:"model"`
@@ -81,9 +109,12 @@ func wtAisMoveOf(c *gin.Context) (*model.WtAisModelSpec, int, bool) {
 		common.ApiError(c, model.ErrWtAisCount)
 		return nil, 0, false
 	}
-	spec, known := model.WtAisModelByUpstream(strings.TrimSpace(input.Model))
+	spec, known := model.WtAisModelByKey(strings.TrimSpace(input.Model))
 	if !known {
 		common.ApiErrorStatus(c, http.StatusBadRequest, model.ErrWtAisUnknownModel)
+		return nil, 0, false
+	}
+	if !wtSpecReady(c, spec) {
 		return nil, 0, false
 	}
 	if input.Count == nil || *input.Count < 1 {
@@ -94,11 +125,9 @@ func wtAisMoveOf(c *gin.Context) (*model.WtAisModelSpec, int, bool) {
 }
 
 // WtGiveAisCalls moves some of the member's remaining calls of one model into
-// that model's public pool.
+// that model's public pool. The model's own pool answers when it is not
+// configured (wtAisMoveOf), so no site-wide check comes first.
 func WtGiveAisCalls(c *gin.Context) {
-	if !wtAisReady(c) {
-		return
-	}
 	identity, ok := middleware.GetSessionAuthIdentity(c)
 	if !ok {
 		common.ApiError(c, errWtDonationSession)
@@ -109,20 +138,17 @@ func WtGiveAisCalls(c *gin.Context) {
 		return
 	}
 	day := model.WtCheckinDay(model.WtNow())
-	remaining, poolBalance, err := model.WtAisGive(identity.UserID, day, spec.Upstream, count, model.WtDisplayNameOfUser(identity.UserID))
-	recordUserSecurityAudit(c, identity.UserID, "wt.ais_give", map[string]any{"model": spec.Upstream, "count": count, "success": err == nil})
+	remaining, poolBalance, err := model.WtAisGive(identity.UserID, day, spec.Key, count, model.WtDisplayNameOfUser(identity.UserID))
+	recordUserSecurityAudit(c, identity.UserID, "wt.ais_give", map[string]any{"model": spec.Key, "count": count, "success": err == nil})
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{"model": spec.Upstream, "remaining": remaining, "pool_balance": poolBalance})
+	common.ApiSuccess(c, gin.H{"model": spec.Key, "remaining": remaining, "pool_balance": poolBalance})
 }
 
 // WtTakeAisCalls moves calls from one model's public pool to the member's day.
 func WtTakeAisCalls(c *gin.Context) {
-	if !wtAisReady(c) {
-		return
-	}
 	identity, ok := middleware.GetSessionAuthIdentity(c)
 	if !ok {
 		common.ApiError(c, errWtDonationSession)
@@ -133,27 +159,13 @@ func WtTakeAisCalls(c *gin.Context) {
 		return
 	}
 	day := model.WtCheckinDay(model.WtNow())
-	remaining, poolBalance, takeLeft, err := model.WtAisTake(identity.UserID, day, spec.Upstream, count, model.WtDisplayNameOfUser(identity.UserID))
-	recordUserSecurityAudit(c, identity.UserID, "wt.ais_take", map[string]any{"model": spec.Upstream, "count": count, "success": err == nil})
+	remaining, poolBalance, takeLeft, err := model.WtAisTake(identity.UserID, day, spec.Key, count, model.WtDisplayNameOfUser(identity.UserID))
+	recordUserSecurityAudit(c, identity.UserID, "wt.ais_take", map[string]any{"model": spec.Key, "count": count, "success": err == nil})
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{"model": spec.Upstream, "remaining": remaining, "pool_balance": poolBalance, "take_left": takeLeft})
-}
-
-// WtGetAisLeaderboard is, for every model, the top twenty by calls and by
-// failed calls, today and of all time.
-func WtGetAisLeaderboard(c *gin.Context) {
-	if !wtAisReady(c) {
-		return
-	}
-	boards, err := model.WtAisLeaderboards(model.WtCheckinDay(model.WtNow()), wtAisLeaderboardLimit)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	common.ApiSuccess(c, gin.H{"models": boards})
+	common.ApiSuccess(c, gin.H{"model": spec.Key, "remaining": remaining, "pool_balance": poolBalance, "take_left": takeLeft})
 }
 
 // WtListPoolEvents is the announcement feed, newest first; after narrows it

@@ -15,6 +15,9 @@
 | `WT_AIS_URL` | 可选。第二个号池（aistudio-api，下称 AIS）的地址，只到端口、不带路径，例如 `http://aistudio-api:8080`。与下面两个一起非空才开启 AIS playground 与算力池（第 15 节） |
 | `WT_AIS_PASSWORD` | 可选。AIS 控制台密码的明文，站点用它调 AIS 的管理接口（`Authorization: Bearer`）。只从环境变量读，不进 options 表 |
 | `WT_AIS_API_KEY` | 可选。在 AIS 里登记的中转密钥，站点启动时写进渠道 `AIS playground` 的密钥（第 15.2 节） |
+| `WT_BUILD_URL` | 可选。第三个号池（AIStudioToAPI，下称 BUILD）的地址，只到端口、不带路径，例如 `http://aistudio-to-api:7860`。与下面两个一起非空才开启 BUILD 号池（第 15 节） |
+| `WT_BUILD_PASSWORD` | 可选。BUILD 控制台密码的明文，站点用它登录控制台（`POST /login` 换一个只放在内存里的会话 Cookie，控制台重启后自动重新登录）。只从环境变量读，不进 options 表 |
+| `WT_BUILD_API_KEY` | 可选。在 BUILD 里登记的中转密钥（它的 `API_KEYS` 之一），站点启动时写进渠道 `BUILD` 的密钥（第 15.2 节） |
 
 **站长账号**：每次启动都检查 root 账号。
 
@@ -48,6 +51,7 @@
 - `wt_discord_only: true`
 - `wt_donation_enabled: true|false`：第 1 节的两个号池变量都非空时为 `true`（第 14 节）
 - `wt_ais_enabled: true|false`：第 1 节的三个 AIS 变量都非空时为 `true`（第 15 节）
+- `wt_build_enabled: true|false`：第 1 节的三个 BUILD 变量都非空时为 `true`（第 15 节）
 
 ## 3. Discord 登录闸门
 
@@ -244,28 +248,32 @@ new-api wt emergency-login [--base-url https://your.site]
 
 ## 7. 排行（登录成员可见）
 
-`GET /api/wt/leaderboard?board=calls&period=today|week|all`，或 `GET /api/wt/leaderboard?board=balance`：
+`GET /api/wt/leaderboard?board=calls|failed&period=today|week|all`，或 `GET /api/wt/leaderboard?board=success_streak|fail_streak|balance`（这三个榜没有榜期，带了也忽略，响应里 `period` 为空字符串）：
 
 ```json
 {
   "board": "calls",
   "period": "today",
-  "items": [ { "rank": 1, "user_id": 5, "display_name": "ABC", "avatar_url": "/api/wt/avatar/123?v=hash&exp=1760198400&sig=...", "value": 42 } ],
+  "items": [ { "rank": 1, "user_id": 5, "display_name": "ABC", "avatar_url": "/api/wt/avatar/123?v=hash&exp=1760198400&sig=...", "value": 42, "current": 3 } ],
   "me": { "rank": 7, "value": 3 },
   "updated_at": 1760000000
 }
 ```
 
-- **调用**：成功的消费日志条数（log type = 2）。
+- **调用**（`calls`）：成功的消费日志条数（log type = 2）。
   - `today` 按北京时间的签到日计算。
   - `week` 指含今天在内的 7 个签到日。
   - `all` 用 `users.request_count`。
-- **余额**：`users.quota`。
+- **失败**（`failed`）：上游返回失败的中转调用条数，三个榜期同上，数据来自 `wt_call_days`（见下面的计数器）。
+- **连续成功**（`success_streak`）/ **连续失败**（`fail_streak`）：`value` 是该成员有史以来最长的一段连续成功 / 连续失败调用，`current` 是此刻正在进行的那一段；只有这两个榜带 `current`，其他榜省略该字段。数据来自 `wt_call_streaks`。
+- **余额**（`balance`）：`users.quota`。
+- **计数器**：每条中转调用结束后（不限模型；站长 root 和匿名调用不算），`middleware.WtPoolGate` 把结果交给 `model.WtCountCall`，由一个后台工作协程按完成顺序写入 `wt_call_days`（`user_id` + `day` 唯一：`calls`、`failed`，`day` 是签到日）和 `wt_call_streaks`（`user_id` 唯一：`success_run`、`fail_run`、`best_success`、`best_fail`、`updated_at`；一次成功把 `fail_run` 清零，一次失败把 `success_run` 清零）。成功与否沿用 `modelRequestSucceeded`。这两张表不跟着日志清理走，服务器定期删 `logs` 不影响失败榜和连击榜；两张表都空时（第一次升级到这个版本），启动时从现存的消费日志（type 2，算成功）和错误日志（type 5，算失败）按写入顺序回填一次，之后不再回填。
 - **规则**：
   - 排除 role ≥ 10 的账号和已禁用账号。
   - 并列名次相同（1、2、2、4）。
-  - 取前 50 名；`me` 是请求者本人的名次和数值。请求者是站长时，`me` 为 null。
+  - 取前 50 名，数值为 0 的不上榜；`me` 是请求者本人的名次和数值。请求者是站长时，`me` 为 null。
   - 每个榜单和榜期组合缓存 60 秒。
+  - `board` 不认识，或 `period` 不是三个值之一 → `Invalid parameters`。
 
 ## 8. 头像
 
@@ -398,9 +406,16 @@ new-api wt emergency-login [--base-url https://your.site]
 | `Available` | AIS 记录的号池状态 `available` |
 | `Unknown AIS PG model` | 闸门、捐/取次数：模型带 `AIS PG-` 前缀但不在模型表里（400） |
 | `The AIS playground pool is not configured` | 闸门：模型带 `AIS PG-` 前缀但功能未配置（503，第 15.9 节）；AIS 专属接口在功能未配置时（200，第 15.3 节） |
-| `The AIS playground pool is temporarily unavailable` | 闸门：账本写不进去（500） |
+| `The pool is temporarily unavailable` | 闸门：账本写不进去（500，AIS 和 BUILD 共用） |
 | `Donate an AI Studio account first to use the AIS PG pool` | 闸门 403；捐/取次数时没有 active AIS 账号 |
 | `Your AIS PG calls for today are used up; take some from the pool or wait for tomorrow` | 闸门 429 |
+| `Unknown BUILD model` | 闸门：模型带 `Build-` 前缀但不在模型表里（400） |
+| `The BUILD pool is not configured` | 闸门：模型带 `Build-` 前缀但功能未配置（503）；BUILD 专属接口在功能未配置时（200，第 15.3 节） |
+| `Donate a BUILD account first to use the BUILD pool` | 闸门 403；捐/取 BUILD 模型的次数时没有 active BUILD 账号 |
+| `Your BUILD calls for today are used up; take some from the pool or wait for tomorrow` | 闸门 429 |
+| `The pool is busy switching accounts; try again in a moment` | BUILD 捐赠（503）/ 移除：控制台正在切换账号，稍后重试 |
+| `The pool could not sign in with this account; export the Cookie again and donate it afresh` | BUILD 核验：控制台把该登录标成失效或读不出（第 15.4.1 节） |
+| `The pool could not read this account; remove it and donate again` | BUILD 记录的号池状态 `invalid` |
 | `Enter a whole number of calls, 1 or more` | 捐/取次数：不是正整数 |
 | `You can only give calls you still have today` | 捐次数：超过今天剩余 |
 | `You can take at most {{max}} calls a day from the pool` | 取次数：当天累计会超过 100 |
@@ -488,34 +503,39 @@ new-api wt emergency-login [--base-url https://your.site]
 
 每人上限 10；flow 5 分钟；核验 2 秒一次、最多 120 秒；CPA 请求 15 秒超时、响应最多读 1 MB；凭证列表缓存 15 秒、用量缓存 60 秒；测试 1 次/分钟、20 次/天。表 `wt_donations` 的字段见规格第 5 节，CPA 的具体接口见规格第 6 节。日志里不记 code、回调地址、令牌、密钥、state 和邮箱。
 
-## 15. AIS playground 号池与算力池
+## 15. AIS playground 号池、BUILD 号池与算力池
 
-成员把不用的 Google AI Studio 账号（浏览器登录 Cookie）交给第二个号池（aistudio-api，下称 AIS），换取 `AIS PG` 分组两个模型的每日调用次数；「算力池」页面展示两个号池的水位、每个模型的公共次数池、公告和排行榜。术语见根目录 `CONTEXT.md`「捐赠」组，部署见 `DEPLOY.md` §10。开关是三个环境变量 `WT_AIS_URL`、`WT_AIS_PASSWORD`、`WT_AIS_API_KEY`（三者齐全才算开启）和第 2 节的 `wt_ais_enabled`；第 14 节的 Antigravity 号池照旧由 `wt_donation_enabled` 控制，两个池子互不依赖。页面「捐赠账号」分三个标签：Antigravity（第 14 节）、AIS playground、算力池，标签由查询参数 `tab=antigravity|aistudio|pool` 选择。
+成员把不用的 Google AI Studio 账号（浏览器登录 Cookie）交给站点的 Cookie 号池，换取每日调用次数。Cookie 号池有两个：aistudio-api（下称 AIS，对应 `AIS PG` 分组的两个模型）和 AIStudioToAPI（下称 BUILD，对应 `BUILD` 分组的一个模型），两边的账号、次数和公共池各算各的，同一个 Cookie 可以分别捐给两边。「算力池」页面顶部是把全部公共池加在一起的动态「潮池」，下面是每个号池的水箱（Antigravity 的水位，AIS 和 BUILD 的本人次数与公共池）和公告；排行榜（含失败榜和连击榜）在第 7 节的 `/rankings`。术语见根目录 `CONTEXT.md`「捐赠」组，部署见 `DEPLOY.md` §10（AIS）和 §11（BUILD）。
+
+开关：AIS 是三个环境变量 `WT_AIS_URL`、`WT_AIS_PASSWORD`、`WT_AIS_API_KEY`（三者齐全才算开启）和第 2 节的 `wt_ais_enabled`；BUILD 是 `WT_BUILD_URL`、`WT_BUILD_PASSWORD`、`WT_BUILD_API_KEY` 和 `wt_build_enabled`；第 14 节的 Antigravity 号池照旧由 `wt_donation_enabled` 控制，三个池子互不依赖。页面「捐赠账号」分四个标签：Antigravity（第 14 节）、AIS playground、BUILD、算力池，标签由查询参数 `tab=antigravity|aistudio|build|pool` 选择，站点没开的池子没有标签。
 
 ### 15.1 规则
 
-AIS PG 的模型表（代码里的 `WtAisModels`，加模型就加一行）：
+号池模型表（代码里的 `WtAisModels`，加模型就加一行；每行带 `Provider`）：
 
-| 成员调用的模型名 | 实际上游模型（渠道映射） | 每个 active 账号每天给捐赠者 | 每人每天最多从公共池取 |
-|---|---|---|---|
-| `AIS PG-gemini-4-argon` | `gemini-4-argon` | 50 次 | 100 次 |
-| `AIS PG-gemini-3.8-flash` | `gemini-3.8-flash` | 100 次 | 100 次 |
+| 号池 | 成员调用的模型名 | 实际上游模型（渠道映射） | 账本键 | 每个 active 账号每天给捐赠者 | 每人每天最多从公共池取 |
+|---|---|---|---|---|---|
+| AIS | `AIS PG-gemini-4-argon` | `gemini-4-argon` | `gemini-4-argon` | 50 次 | 100 次 |
+| AIS | `AIS PG-gemini-3.8-flash` | `gemini-3.8-flash` | `gemini-3.8-flash` | 100 次 | 100 次 |
+| BUILD | `Build-gemini-3.8-flash` | `gemini-3.8-flash` | `Build-gemini-3.8-flash` | 100 次 | 100 次 |
 
+- 账本键是账本和公共池按模型分账用的名字，也是接口里 `model` 字段的值：AIS 沿用上游模型名，BUILD 用带前缀的名字，所以两个 flash 池子不会混。
 - 每个模型各自记账：成员在每个模型上各有一份当天的次数，公共池也是每个模型每天一个。"每天"是签到日（`WtCheckinDay`，北京时间自然日），当天没用完的不结转。
-- 没有 `active` AIS 账号的成员不能调用这些模型，也不能从公共池取次数。
+- 只有本池 `active` 账号的捐赠者能调用本池的模型、能从本池模型的公共池取次数：AIS 账号只给 `AIS PG-…`，BUILD 账号只给 `Build-…`。
 - 公共池按模型、按天计：成员可以把某个模型今天剩余的次数捐给该模型的公共池（不限量，但不超过自己今天的剩余），也可以从公共池取次数加到自己今天的额度里（每人每天每个模型最多取 100 次，且不超过池内余额）。
 - 计数时机：请求通过分发、进入转发前先在该模型的账本上记 1 次；上游返回非 2xx 时退回这 1 次并记 1 次失败。站长（root）不计数、不受限，方便测试。
-- 公告：有人捐赠或移除账号（两个池子都算）、捐次数、取次数时自动生成一条，显示站内昵称（没有则用户名），捐/取次数的公告带模型名，只保留最新 200 条。
-- 排行榜：每个模型一套 AIS PG 调用次数榜和调用失败榜，各分今日/累计，取前 20，次数为 0 的不上榜。
-- 只导入 Cookie 里浏览器的第一个账号（u/0）；页面的风险说明写明这一点，并说明 Cookie 等于交出该 Google 账号的完整登录。
+- 公告：有人捐赠或移除账号（三个池子都算）、捐次数、取次数时自动生成一条，显示站内昵称（没有则用户名），捐/取次数的公告带模型名，只保留最新 200 条。
+- AIS 只导入 Cookie 里浏览器的第一个账号（u/0）；BUILD 把 Cookie 整个交给受控浏览器，哪个账号在前就用哪个。页面的风险说明写明这一点，并说明 Cookie 等于交出该 Google 账号的完整登录。
 
 ### 15.2 渠道、分组与倍率由站点维护
 
-功能开启时，站点每次启动都执行一次 `WtEnsureAisChannel`（幂等）：
+功能开启时，站点每次启动都对开着的池子各执行一次（`WtEnsureAisChannel` / `WtEnsureBuildChannel`，同一段幂等逻辑）：
 
-- 分组倍率 `GroupRatio` 里保证 `AIS PG: 1`；可选分组 `UserUsableGroups` 里保证 `AIS PG`（说明 `AIS playground pool`）。
-- 模型倍率和补全倍率里保证模型表里的每个 `AIS PG-…` 都存在：有对应上游模型（`gemini-4-argon`、`gemini-3.8-flash`）的值就照抄，没有就是 1。
-- 按标签 `wt-ais` 找渠道，没有就建，有就改成：名称 `AIS playground`、类型 Gemini、地址 `WT_AIS_URL`、密钥 `WT_AIS_API_KEY`、模型 `AIS PG-gemini-4-argon,AIS PG-gemini-3.8-flash`、模型映射 `{"AIS PG-gemini-4-argon":"gemini-4-argon","AIS PG-gemini-3.8-flash":"gemini-3.8-flash"}`、分组 `default,vip,svip,AIS PG`、启用、优先级 0、权重 0，然后刷新渠道缓存。
+- 分组倍率 `GroupRatio` 里保证 `AIS PG: 1` / `BUILD: 1`；可选分组 `UserUsableGroups` 里保证 `AIS PG`（说明 `AIS playground pool`）/ `BUILD`（说明 `BUILD pool`）。
+- 模型倍率和补全倍率里保证模型表里该池的每个模型都存在：有对应上游模型（`gemini-4-argon`、`gemini-3.8-flash`）的值就照抄，没有就是 1。
+- 按标签找渠道，没有就建，有就改成约定值，然后刷新渠道缓存：
+  - AIS：标签 `wt-ais`，名称 `AIS playground`、类型 Gemini、地址 `WT_AIS_URL`、密钥 `WT_AIS_API_KEY`、模型 `AIS PG-gemini-4-argon,AIS PG-gemini-3.8-flash`、模型映射 `{"AIS PG-gemini-4-argon":"gemini-4-argon","AIS PG-gemini-3.8-flash":"gemini-3.8-flash"}`、分组 `default,vip,svip,AIS PG`、启用、优先级 0、权重 0。
+  - BUILD：标签 `wt-build`，名称 `BUILD`、类型 Gemini、地址 `WT_BUILD_URL`、密钥 `WT_BUILD_API_KEY`、模型 `Build-gemini-3.8-flash`、模型映射 `{"Build-gemini-3.8-flash":"gemini-3.8-flash"}`、分组 `default,vip,svip,BUILD`、启用、优先级 0、权重 0。
 
 上面列出的字段在后台手改会在下次重启被改回；没列出的字段（备注、测试模型等）站点不动。
 
@@ -525,27 +545,37 @@ AIS PG 的模型表（代码里的 `WtAisModels`，加模型就加一行）：
 
 | 方法 | 路径 | 作用 |
 |---|---|---|
-| `GET` | `/api/wt/donations?provider=antigravity\|aistudio` | 本人的捐赠列表，按池子过滤（不带参数 = antigravity，形状同 14.5） |
-| `POST` | `/api/wt/donations/aistudio` | 提交 Cookie，捐一个 AI Studio 账号 |
+| `GET` | `/api/wt/donations?provider=antigravity\|aistudio\|build` | 本人的捐赠列表，按池子过滤（不带参数 = antigravity，形状同 14.5） |
+| `POST` | `/api/wt/donations/aistudio` | 提交 Cookie，捐一个 AI Studio 账号给 AIS |
+| `POST` | `/api/wt/donations/build` | 提交 Cookie，捐一个 AI Studio 账号给 BUILD |
 | `GET` | `/api/wt/donations/:id` | 单条状态（弹窗第 3 步每 3 秒轮询） |
-| `POST` | `/api/wt/donations/:id/test` | AIS 记录：让号池读一次登录邮箱 |
-| `GET` | `/api/wt/donations/:id/usage` | AIS 记录一律 404 `Usage is not available for this pool` |
-| `POST` | `/api/wt/donations/:id/remove` | AIS 记录：删掉号池里的账号再标记 `removed` |
-| `GET` | `/api/wt/pool` | 两个池子的水位、本人每个模型的 AIS 账本、最新 50 条公告 |
-| `POST` | `/api/wt/pool/ais/give` | 把某个模型今天剩余的次数捐给它的公共池 |
-| `POST` | `/api/wt/pool/ais/take` | 从某个模型的公共池取次数 |
-| `GET` | `/api/wt/pool/ais/leaderboard` | 两个模型的调用榜和失败榜 |
+| `POST` | `/api/wt/donations/:id/test` | AIS 记录：让号池读一次登录邮箱；BUILD 记录：重读一次控制台状态 |
+| `GET` | `/api/wt/donations/:id/usage` | AIS、BUILD 记录一律 404 `Usage is not available for this pool` |
+| `POST` | `/api/wt/donations/:id/remove` | 删掉号池里的账号再标记 `removed` |
+| `GET` | `/api/wt/pool` | 三个池子的状态、本人每个模型的账本、最新 50 条公告 |
+| `POST` | `/api/wt/pool/ais/give` | 把某个模型今天剩余的次数捐给它的公共池（AIS 和 BUILD 的模型都走这里） |
+| `POST` | `/api/wt/pool/ais/take` | 从某个模型的公共池取次数（同上） |
 | `GET` | `/api/wt/pool/events?after=<id>` | 公告增量（`after=0` 为最新 50 条） |
 
-AIS 专属接口（提交 Cookie、捐/取次数、排行榜，以及对 AIS 记录的列表、查询、测试、移除）在功能关闭时回 `success:false`、消息 `The AIS playground pool is not configured`（HTTP 200）；`/api/wt/pool` 和 `/api/wt/pool/events` 只要任一池子开启就可用（关闭的那一侧为 `null`），两个池子都关时回 `Account donation is not enabled on this site`。`provider` 不是这两个值 → `Invalid parameters`。
+AIS 专属接口（提交 Cookie 给 AIS、捐/取 AIS 模型的次数，以及对 AIS 记录的列表、查询、测试、移除）在 AIS 关闭时回 `success:false`、消息 `The AIS playground pool is not configured`（HTTP 200）；BUILD 的对应接口在 BUILD 关闭时回 `The BUILD pool is not configured`。`/api/wt/pool` 和 `/api/wt/pool/events` 只要任一池子开启就可用（关闭的那一侧为 `null`），三个池子都关时回 `Account donation is not enabled on this site`。`provider` 不是这三个值 → `Invalid parameters`。原来的 `GET /api/wt/pool/ais/leaderboard` 已删除（榜单并入第 7 节）。
 
 ### 15.4 提交 Cookie `POST /api/wt/donations/aistudio`
 
-请求 `{"cookies": "…", "accepted": true}`。检查顺序：功能开启；请求体最多 192 KB（给 64 KB Cookie 的 JSON 转义留余量），解析不了 → 400 `Invalid parameters`；`accepted` 必须为真，否则 400 `Accept the risks before donating an account`；`cookies` 最长 64 KB，超长按没有登录 Cookie 处理（400）；如果文本是 JSON 且带 `accounts` 数组（aistudio-api 安卓提取器导出的包），只取第一个账号的 `cookies`；接受 `k=v; k2=v2` 的请求头格式和 `[{"name","value"}]` 的 JSON 数组；必须含 `__Secure-1PSID`、`SID`、`SAPISID`、`__Secure-1PAPISID` 之一，否则 `Paste the Cookie of a signed-in AI Studio page`；按指纹（这四个里第一个存在的值的 SHA-256，取前 32 位十六进制，存在 `auth_index`）查重，已有 `verifying`/`active` 记录 → `This account is already in the pool`；每人最多 10 条 AIS 记录。然后调号池的 `POST /accounts/import-cookies`（`auth_user` 固定 `0`，账号名 `wt-<成员 id>-<4 位随机十六进制>`，方便站长在 AIS 控制台认出来源）：号池解析不出 Cookie → 同上的 Cookie 提示；号池不可达或 5xx → 502 `The pool is not answering; try again later`。通过后建记录（`provider=aistudio`、`credential_name`=号池账号 id、`status=verifying`、邮箱为空）并启动核验，响应 202 `{"id": 12, "status": "verifying"}`，审计 `wt.donation_add`。Cookie 文本不落库、不写日志、不回显。
+请求 `{"cookies": "…", "accepted": true}`。检查顺序：功能开启；请求体最多 192 KB（给 64 KB Cookie 的 JSON 转义留余量），解析不了 → 400 `Invalid parameters`；`accepted` 必须为真，否则 400 `Accept the risks before donating an account`；`cookies` 最长 64 KB，超长按没有登录 Cookie 处理（400）；如果文本是 JSON 且带 `accounts` 数组（aistudio-api 安卓提取器导出的包），只取第一个账号的 `cookies`；接受 `k=v; k2=v2` 的请求头格式和 `[{"name","value"}]` 的 JSON 数组；必须含 `__Secure-1PSID`、`SID`、`SAPISID`、`__Secure-1PAPISID` 之一，否则 `Paste the Cookie of a signed-in AI Studio page`；按指纹（这四个里第一个存在的值的 SHA-256，取前 32 位十六进制，存在 `auth_index`）在**本池**查重，已有 `verifying`/`active` 记录 → `This account is already in the pool`；每人每池最多 10 条。然后调号池的 `POST /accounts/import-cookies`（`auth_user` 固定 `0`，账号名 `wt-<成员 id>-<4 位随机十六进制>`，方便站长在 AIS 控制台认出来源）：号池解析不出 Cookie → 同上的 Cookie 提示；号池不可达或 5xx → 502 `The pool is not answering; try again later`。通过后建记录（`provider=aistudio`、`credential_name`=号池账号 id、`status=verifying`、邮箱为空）并启动核验，响应 202 `{"id": 12, "status": "verifying"}`，审计 `wt.donation_add`。Cookie 文本不落库、不写日志、不回显。
 
 核验任务每 10 秒调一次号池的 `POST /accounts/{id}/detect-email`，最多 12 次：拿到邮箱 → 规范化后查重（站内其他 `verifying`/`active` 的 AIS 记录同邮箱 → 失败 `This account is already in the pool`），通过则 `active`（记 `email`、`verified_at`）并发公告 `ais_account_donated`；邮箱为空或号池回 503（受控浏览器没就绪）→ 下次再试；404 → 失败 `The pool lost the account; donate again`；12 次用完 → 失败 `The pool could not read the account in time; try again later`。任何失败都会顺手删掉号池里的那个账号（删不掉也不报错）。站点启动时把遗留的 `verifying` AIS 记录按同样规则收尾。
 
-### 15.5 列表里的 AIS 记录
+### 15.4.1 提交 Cookie `POST /api/wt/donations/build`
+
+请求和前置检查与 15.4 完全相同（同一段代码：192 KB / `accepted` / 64 KB / 提取器 JSON / 两种格式 / 四个登录 Cookie 之一 / 本池指纹查重 / 每人每池 10 条）。之后站点把 Cookie 变成 BUILD 控制台能加载的浏览器 storage state：每个 `k=v` 变成一条 `.google.com`、路径 `/`、`secure`、`SameSite=None` 的 Cookie，`SAPISID`、`APISID`、`__Secure-1PAPISID`、`__Secure-3PAPISID` 之外的都标 `httpOnly`，过期时间写 180 天后（真正的有效期由 Google 决定），`__Host-` 开头的丢弃（跨不了域，登录也用不到）；一条都不剩 → 400 `Paste the Cookie of a signed-in AI Studio page`。文件里的 `accountName` 是 `wt-<成员 id>-<4 位随机十六进制>`，从不写邮箱，控制台不会把两个成员的文件并成一个。
+
+上传：控制台 `POST /api/files`，请求 `{"content": <storage state>}`，200 回 `{"filename": "auth-7.json"}`，编号 7 就是这条记录的 `credential_name`；控制台正在切换账号（409）→ 503 `The pool is busy switching accounts; try again in a moment`；其他失败 → 502 `The pool is not answering; try again later`。建记录（`provider=build`、`credential_name`=编号、`status=verifying`、邮箱永远为空）失败时顺手把文件删掉。响应和审计同 15.4。
+
+核验：控制台没有读邮箱的接口，站点每 10 秒读一次 `GET /api/status`，最多 12 次：文件不见了 → 失败 `The pool lost the account; donate again`；`isExpired`（登录被弹回 Google 登录页）或 `isInvalid`（文件读不出）→ 失败 `The pool could not sign in with this account; export the Cookie again and donate it afresh`；`hasContext`（浏览器已经用它登录）→ `active`，发公告 `build_account_donated`；第 5 次读到时它还没被试过、且控制台不忙 → `PUT /api/accounts/current {"targetIndex": 7}` 让控制台切到它去登录；12 次之后还没结论 → 先按 `active` 收下（控制台第一次用它时会标 `isExpired`，列表里能看到）。失败时删掉控制台里的文件（`DELETE /api/accounts/7?force=true`，删不掉也不报错）。站点启动时把遗留的 `verifying` BUILD 记录一条接一条收尾（只在主节点，避免让控制台同时切两次）。
+
+控制台会话：站点用 `WT_BUILD_PASSWORD` 调 `POST /login` 换一个会话 Cookie（只放在内存里，不落盘），之后的请求都带它；控制台重启忘了会话（回 401 或跳转）就重新登录一次，再失败才报 `The pool is not answering; try again later`。控制台请求 20 秒超时、最多读 1 MB、不跟随跳转。日志只记操作名和 HTTP 状态码。
+
+### 15.5 列表里的 AIS 和 BUILD 记录
 
 `GET /api/wt/donations?provider=aistudio` 的 `items[]` 多一个 `provider` 字段，`pool` 为 `{"state": "available", "message": "Available", "retry_at": 0, "success": 120, "failed": 3, "rate_limited": 1, "requests_today": 7, "cooling": [{"model": "gemini-4-argon", "retry_at": 1760050000}]}`，来自号池 `GET /rotation/accounts`（进程内缓存 15 秒；号池不可达或密码不对时拿不到轮转表，`pool` 为 `null`），按顺序取第一个命中：
 
@@ -559,39 +589,51 @@ AIS 专属接口（提交 Cookie、捐/取次数、排行榜，以及对 AIS 记
 
 `cooling` 列出当前在冷却中的上游模型和各自的恢复时间（只有部分模型冷却时状态仍是 `available`）；`requests_today` 是号池记的两个上游模型当日（美国太平洋时间，和 Google 的配额日一致）请求数之和；`failed` = `errors + auth_errors`；`rate_limited` 是号池记的被限流次数。
 
-测试（`POST /api/wt/donations/:id/test`）对 AIS 记录就是一次 `detect-email`：读到邮箱为 `ok`，消息 `The pool can still use this account`，否则 `The pool can no longer sign in with this account`；1 次/分钟、20 次/天和 `last_test` 的记法同 14.8，`usage` 恒为 `null`。移除对 AIS 记录是 `DELETE /accounts/{id}`（200 或 404 算成功），然后标记 `removed`；记录原本是 `active` 时才发公告 `ais_account_removed`（移除一条 `verifying`/`failed` 的记录不发）。Antigravity 记录核验成功时发 `antigravity_donated`，移除 `active` 记录时发 `antigravity_removed`。
+`GET /api/wt/donations?provider=build` 的 `pool` 为 `{"state": "available", "message": "Available", "index": 7, "current": true, "has_context": true}`，来自控制台 `GET /api/status`（缓存 15 秒，一次请求供同时打开页面的所有人用；控制台不可达或密码不对时 `pool` 为 `null`），`email` 永远为空（页面按「BUILD 账号 #7」显示）：
+
+| 条件 | `state` | `message` |
+|---|---|---|
+| 控制台里没有这个编号 | `missing` | `The pool no longer has this account` |
+| `isInvalid` 为真 | `invalid` | `The pool could not read this account; remove it and donate again` |
+| `isExpired` 为真 | `expired` | `The pool can no longer sign in with this account; remove it and donate again` |
+| 其余 | `available` | `Available`（`current` 表示控制台此刻正用它服务，`has_context` 表示浏览器为它开着上下文） |
+
+测试（`POST /api/wt/donations/:id/test`）对 AIS 记录就是一次 `detect-email`：读到邮箱为 `ok`，消息 `The pool can still use this account`，否则 `The pool can no longer sign in with this account`；对 BUILD 记录是重读一次控制台状态：编号还在且既不 `isExpired` 也不 `isInvalid` 为 `ok`，消息同上；1 次/分钟、20 次/天和 `last_test` 的记法同 14.8，`usage` 恒为 `null`。移除对 AIS 记录是 `DELETE /accounts/{id}`（200 或 404 算成功），对 BUILD 记录是 `DELETE /api/accounts/{index}?force=true`（200 或 404 算成功，409 → `The pool is busy switching accounts; try again in a moment`，成员稍后再点），然后标记 `removed`；记录原本是 `active` 时才发公告 `ais_account_removed` / `build_account_removed`（移除一条 `verifying`/`failed` 的记录不发）。Antigravity 记录核验成功时发 `antigravity_donated`，移除 `active` 记录时发 `antigravity_removed`。
 
 ### 15.6 算力池 `GET /api/wt/pool`
 
 ```json
 {
   "antigravity": {"fetched_at": 1760000000, "accounts": 12, "healthy": 10, "buckets": [{"name": "Gemini 3 Pro", "window": "5h", "average_remaining_fraction": 0.63}]},
-  "aistudio": {"day": "2026-10-19", "accounts": 2, "models": [
-    {"model": "gemini-4-argon", "relay_model": "AIS PG-gemini-4-argon", "per_account": 50, "take_max": 100, "allowance": 130, "calls": 41, "failed_today": 2, "given": 0, "taken": 30, "remaining": 89, "take_left": 70, "pool_balance": 215},
-    {"model": "gemini-3.8-flash", "relay_model": "AIS PG-gemini-3.8-flash", "per_account": 100, "take_max": 100, "allowance": 200, "calls": 5, "failed_today": 0, "given": 0, "taken": 0, "remaining": 195, "take_left": 100, "pool_balance": 40}
+  "aistudio": {"provider": "aistudio", "day": "2026-10-19", "accounts": 2, "models": [
+    {"provider": "aistudio", "model": "gemini-4-argon", "relay_model": "AIS PG-gemini-4-argon", "per_account": 50, "take_max": 100, "allowance": 130, "calls": 41, "failed_today": 2, "given": 0, "taken": 30, "remaining": 89, "take_left": 70, "pool_balance": 215, "pool_given": 260, "pool_taken": 45},
+    {"provider": "aistudio", "model": "gemini-3.8-flash", "relay_model": "AIS PG-gemini-3.8-flash", "per_account": 100, "take_max": 100, "allowance": 200, "calls": 5, "failed_today": 0, "given": 0, "taken": 0, "remaining": 195, "take_left": 100, "pool_balance": 40, "pool_given": 40, "pool_taken": 0}
+  ]},
+  "build": {"provider": "build", "day": "2026-10-19", "accounts": 1, "models": [
+    {"provider": "build", "model": "Build-gemini-3.8-flash", "relay_model": "Build-gemini-3.8-flash", "per_account": 100, "take_max": 100, "allowance": 100, "calls": 10, "failed_today": 0, "given": 0, "taken": 0, "remaining": 90, "take_left": 100, "pool_balance": 12, "pool_given": 20, "pool_taken": 8}
   ]},
   "events": [{"id": 88, "kind": "ais_taken", "provider": "aistudio", "display_name": "涂山红红", "amount": 30, "model": "gemini-4-argon", "created_at": 1760000100}]
 }
 ```
 
-`antigravity` 是后台任务（只在主节点、Antigravity 池开启时跑）每 5 分钟刷新一次的快照：列出号池里**全部** Antigravity 类型的凭证（不只是捐来的；CPA 里其他类型的凭证不算），逐个取剩余用量（最多 4 个并发，沿用 14.7 的 60 秒缓存），`accounts` 为凭证数，`healthy` 为状态 `ok` 的个数，`buckets` 按名称 + 窗口聚合，`average_remaining_fraction` 是答得上来的账号的平均值；第一次刷新前 `fetched_at` 为 0、`buckets` 为空；号池不可达时保留上一次的快照。`aistudio.models[]` 是本人当天每个模型的账本（顺序同模型表）：`allowance` = `per_account` × active 账号数 + `taken` − `given`，`remaining` = `allowance` − `calls`，`take_left` = `take_max` − `taken`，`pool_balance` 是该模型公共池当天的余额。对应池子关闭时为 `null`。`events` 最新在前，50 条，`model` 只在捐/取次数的公告里非空。
+`antigravity` 是后台任务（只在主节点、Antigravity 池开启时跑）每 5 分钟刷新一次的快照：列出号池里**全部** Antigravity 类型的凭证（不只是捐来的；CPA 里其他类型的凭证不算），逐个取剩余用量（最多 4 个并发，沿用 14.7 的 60 秒缓存），`accounts` 为凭证数，`healthy` 为状态 `ok` 的个数，`buckets` 按名称 + 窗口聚合，`average_remaining_fraction` 是答得上来的账号的平均值；第一次刷新前 `fetched_at` 为 0、`buckets` 为空；号池不可达时保留上一次的快照。`aistudio.models[]` / `build.models[]` 是本人当天每个模型的账本（顺序同模型表，`model` 是账本键）：`allowance` = `per_account` × 本池 active 账号数 + `taken` − `given`，`remaining` = `allowance` − `calls`，`take_left` = `take_max` − `taken`，`pool_balance` 是该模型公共池当天的余额，`pool_given` / `pool_taken` 是公共池当天收到和被取走的总数（页面顶部的潮池用它们算水位：`pool_balance / pool_given`）。对应池子关闭时为 `null`。`events` 最新在前，50 条，`model` 只在捐/取次数的公告里非空。
 
 ### 15.7 捐次数 / 取次数
 
-`POST /api/wt/pool/ais/give` 请求 `{"model": "gemini-4-argon", "count": 20}`，响应 `{"model": "gemini-4-argon", "remaining": 69, "pool_balance": 235}`；`POST /api/wt/pool/ais/take` 请求同形，响应 `{"model": "gemini-4-argon", "remaining": 109, "pool_balance": 195, "take_left": 50}`。`model` 填上游模型名（`gemini-4-argon` / `gemini-3.8-flash`）。错误：模型不在表里 → `Unknown AIS PG model`；不是正整数 → `Enter a whole number of calls, 1 or more`；没有 active AIS 账号 → `Donate an AI Studio account first to use the AIS PG pool`；捐的比今天剩余多 → `You can only give calls you still have today`；今天取的会超过 100 → `You can take at most {{max}} calls a day from the pool`；池里不够 → `The pool does not hold that many calls right now`。两者都在一个加锁事务里改账本和池子并写公告（`ais_given` / `ais_taken`，带 `model`），审计 `wt.ais_give` / `wt.ais_take`（参数 `{"model": "gemini-4-argon", "count": 20}`）。
+`POST /api/wt/pool/ais/give` 请求 `{"model": "gemini-4-argon", "count": 20}`，响应 `{"model": "gemini-4-argon", "remaining": 69, "pool_balance": 235}`；`POST /api/wt/pool/ais/take` 请求同形，响应 `{"model": "gemini-4-argon", "remaining": 109, "pool_balance": 195, "take_left": 50}`。`model` 填账本键（`gemini-4-argon` / `gemini-3.8-flash` / `Build-gemini-3.8-flash`），站点按它所属的池子检查开关和账号。错误：模型不在表里 → 400 `Unknown AIS PG model`；所属池子没开 → 该池的 not-configured 消息；不是正整数 → `Enter a whole number of calls, 1 or more`；没有本池的 active 账号 → `Donate an AI Studio account first to use the AIS PG pool` / `Donate a BUILD account first to use the BUILD pool`；捐的比今天剩余多 → `You can only give calls you still have today`；今天取的会超过 100 → `You can take at most {{max}} calls a day from the pool`；池里不够 → `The pool does not hold that many calls right now`。两者都在一个加锁事务里改账本和池子并写公告（AIS 模型 `ais_given` / `ais_taken`，BUILD 模型 `build_given` / `build_taken`，都带 `model`），审计 `wt.ais_give` / `wt.ais_take`（参数 `{"model": "gemini-4-argon", "count": 20}`）。
 
-### 15.8 排行榜与公告
+### 15.8 公告
 
-`GET /api/wt/pool/ais/leaderboard` → `{"models": [{"model": "gemini-4-argon", "relay_model": "AIS PG-gemini-4-argon", "today": {"calls": [{"rank": 1, "display_name": "涂山红红", "count": 41}], "failed": […]}, "total": {"calls": […], "failed": […]}}, {"model": "gemini-3.8-flash", …}]}`，各取前 20，`display_name` 没有时用用户名。`GET /api/wt/pool/events?after=88` → `{"items": […]}`，只给 id 大于 `after` 的，最新在前，最多 50 条；`kind` 取值 `antigravity_donated`、`antigravity_removed`、`ais_account_donated`、`ais_account_removed`、`ais_given`、`ais_taken`，`amount` 和 `model` 只有捐/取次数时非空。
+`GET /api/wt/pool/events?after=88` → `{"items": […]}`，只给 id 大于 `after` 的，最新在前，最多 50 条；`kind` 取值 `antigravity_donated`、`antigravity_removed`、`ais_account_donated`、`ais_account_removed`、`ais_given`、`ais_taken`、`build_account_donated`、`build_account_removed`、`build_given`、`build_taken`，`amount` 和 `model` 只有捐/取次数时非空。页面把它们读成句子，并在有新公告时让潮池涨落一下。
 
 ### 15.9 调用闸门
 
-`middleware.WtAisGate` 紧跟在每条转发链的 `Distribute` 之后，只对原始模型名以 `AIS PG-` 开头的请求生效（其他模型零开销）。带前缀但不在模型表里 → 400 `Unknown AIS PG model`；功能未配置 → 503 `The AIS playground pool is not configured`；没有 active AIS 账号 → 403 `Donate an AI Studio account first to use the AIS PG pool`；该模型今天用完 → 429 `Your AIS PG calls for today are used up; take some from the pool or wait for tomorrow`；账本写不进去 → 500 `The AIS playground pool is temporarily unavailable`。只有通过时响应头才带 `X-WT-AIS-Remaining`（该模型扣掉这次之后的剩余）；上游失败（`modelRequestSucceeded` 为假）时退回 1 次并记 1 次失败。root 直接放行。
+`middleware.WtPoolGate` 紧跟在每条转发链的 `Distribute` 之后。原始模型名以 `AIS PG-` 开头的归 AIS，以 `Build-` 开头的归 BUILD，其他模型直接放行（只在结束后记一次第 7 节的调用计数，没有数据库查询）。带前缀但不在模型表里，或前缀和模型表里的池子对不上 → 400 `Unknown AIS PG model` / `Unknown BUILD model`；该池功能未配置 → 503 `The AIS playground pool is not configured` / `The BUILD pool is not configured`；没有本池 active 账号 → 403 `Donate an AI Studio account first to use the AIS PG pool` / `Donate a BUILD account first to use the BUILD pool`；该模型今天用完 → 429 `Your AIS PG calls for today are used up; take some from the pool or wait for tomorrow` / `Your BUILD calls for today are used up; take some from the pool or wait for tomorrow`；账本写不进去 → 500 `The pool is temporarily unavailable`。只有通过时响应头才带 `X-WT-AIS-Remaining`（该模型扣掉这次之后的剩余；BUILD 也用这个头名）；上游失败（`modelRequestSucceeded` 为假）时退回 1 次并记 1 次失败。root 直接放行、不计数。
 
 ### 15.10 常量与表
 
-每人最多 10 条 AIS 记录；每账号每天的次数和每天最多取的次数见 15.1 的模型表；公告保留 200 条；Cookie 最长 64 KB（请求体 192 KB）；号池请求 15 秒超时、最多读 1 MB；`/rotation/accounts` 缓存 15 秒；核验 10 秒 × 12 次。号池的管理接口没有 `/api` 前缀（`/accounts/import-cookies`、`/accounts/{id}/detect-email`、`/accounts/{id}`、`/rotation/accounts`），鉴权是 `Authorization: Bearer <WT_AIS_PASSWORD>`。
+每人每池最多 10 条记录；每账号每天的次数和每天最多取的次数见 15.1 的模型表；公告保留 200 条；Cookie 最长 64 KB（请求体 192 KB）。AIS：号池请求 15 秒超时、最多读 1 MB；`/rotation/accounts` 缓存 15 秒；核验 10 秒 × 12 次；管理接口没有 `/api` 前缀（`/accounts/import-cookies`、`/accounts/{id}/detect-email`、`/accounts/{id}`、`/rotation/accounts`），鉴权是 `Authorization: Bearer <WT_AIS_PASSWORD>`。BUILD：控制台请求 20 秒超时、最多读 1 MB、不跟随跳转；`/api/status` 缓存 15 秒；核验 10 秒 × 12 次，第 5 次时切换；登录文件里的过期时间 180 天；接口是 `POST /login`、`GET /api/status`、`POST /api/files`、`PUT /api/accounts/current`、`DELETE /api/accounts/{index}?force=true`，鉴权是登录换来的会话 Cookie。
 
-表：`wt_donations` 复用（`provider` 为 `aistudio`，`credential_name` 存号池账号 id，`auth_index` 存 Cookie 指纹，`project_id` 为空）；`wt_ais_ledgers`（`user_id` + `day` + `model` 唯一：`calls`、`failed`、`given`、`taken`、`updated_at`）；`wt_ais_pools`（`day` + `model` 唯一：`balance`、`given_total`、`taken_total`、`updated_at`）；`wt_pool_events`（`kind`、`provider`、`user_id`、`display_name`、`amount`、`model`、`created_at`）。`model` 列存上游模型名。
+表：`wt_donations` 复用（AIS：`provider` 为 `aistudio`，`credential_name` 存号池账号 id；BUILD：`provider` 为 `build`，`credential_name` 存控制台里的文件编号；两者 `auth_index` 都存 Cookie 指纹，`project_id` 为空）；`wt_ais_ledgers`（`user_id` + `day` + `model` 唯一：`calls`、`failed`、`given`、`taken`、`updated_at`）；`wt_ais_pools`（`day` + `model` 唯一：`balance`、`given_total`、`taken_total`、`updated_at`）；`wt_pool_events`（`kind`、`provider`、`user_id`、`display_name`、`amount`、`model`、`created_at`）。`model` 列存账本键。第 7 节的 `wt_call_days`、`wt_call_streaks` 与号池无关，记所有成员的调用。
 
-一键取 Cookie：页面提供 `/tools/ais-cookie-helper.zip`（Chrome/Edge 开发者模式加载的小扩展，源码 `wind-tide/tools/ais-cookie-helper/`，改动后用 `wind-tide/tools/pack_cookie_helper.py` 重新打包），备选是商店里的 Cookie-Editor（导出 Header String）和 aistudio-api 的安卓提取器导出的 JSON。
+一键取 Cookie：页面提供 `/tools/ais-cookie-helper.zip`（Chrome/Edge 开发者模式加载的小扩展，源码 `wind-tide/tools/ais-cookie-helper/`，改动后用 `wind-tide/tools/pack_cookie_helper.py` 重新打包），备选是商店里的 Cookie-Editor（导出 Header String）和 aistudio-api 的安卓提取器导出的 JSON；AIS 和 BUILD 的捐赠弹窗用同一套步骤和同一个助手。

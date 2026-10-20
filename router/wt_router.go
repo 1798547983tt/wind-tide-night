@@ -47,6 +47,8 @@ func setWtRoutes(apiRouter *gin.RouterGroup) {
 		// wind-tide: donated AI Studio accounts (wind-tide/API.md §15) share
 		// the list, the single-row routes and the write limit.
 		donationRoute.POST("/aistudio", middleware.UserCriticalRateLimit("wt-donation"), controller.WtDonateAistudio)
+		// wind-tide: the same Cookie donated to the BUILD pool (§15).
+		donationRoute.POST("/build", middleware.UserCriticalRateLimit("wt-donation"), controller.WtDonateBuild)
 	}
 
 	// wind-tide: the pool page (wind-tide/API.md §15). Members only, browser
@@ -56,7 +58,6 @@ func setWtRoutes(apiRouter *gin.RouterGroup) {
 	{
 		poolRoute.GET("", controller.WtGetPool)
 		poolRoute.GET("/events", controller.WtListPoolEvents)
-		poolRoute.GET("/ais/leaderboard", controller.WtGetAisLeaderboard)
 		poolRoute.POST("/ais/give", middleware.UserCriticalRateLimit("wt-donation"), controller.WtGiveAisCalls)
 		poolRoute.POST("/ais/take", middleware.UserCriticalRateLimit("wt-donation"), controller.WtTakeAisCalls)
 	}

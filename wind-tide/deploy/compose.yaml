@@ -33,6 +33,11 @@ services:
       WT_AIS_URL: ${WT_AIS_URL:-}
       WT_AIS_PASSWORD: ${WT_AIS_PASSWORD:-}
       WT_AIS_API_KEY: ${WT_AIS_API_KEY:-}
+      # Optional: the AIStudioToAPI pool behind the BUILD tab (wind-tide/API.md
+      # §15). All three empty = feature hidden.
+      WT_BUILD_URL: ${WT_BUILD_URL:-}
+      WT_BUILD_PASSWORD: ${WT_BUILD_PASSWORD:-}
+      WT_BUILD_API_KEY: ${WT_BUILD_API_KEY:-}
       # Caddy is the only proxy in front of the site; trust its network only.
       TRUSTED_PROXIES: 10.255.250.0/24
       ERROR_LOG_ENABLED: 'true'

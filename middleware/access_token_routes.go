@@ -327,12 +327,12 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"POST /api/wt/donations/:id/test":   accessTokenSessionRule,
 	"POST /api/wt/donations/:id/remove": accessTokenSessionRule,
 	// wind-tide: the AIS playground pool (wind-tide/API.md §15) takes browser sessions only.
-	"POST /api/wt/donations/aistudio":  accessTokenSessionRule,
-	"GET /api/wt/pool":                 accessTokenSessionRule,
-	"GET /api/wt/pool/events":          accessTokenSessionRule,
-	"GET /api/wt/pool/ais/leaderboard": accessTokenSessionRule,
-	"POST /api/wt/pool/ais/give":       accessTokenSessionRule,
-	"POST /api/wt/pool/ais/take":       accessTokenSessionRule,
+	"POST /api/wt/donations/aistudio": accessTokenSessionRule,
+	"GET /api/wt/pool":                accessTokenSessionRule,
+	"GET /api/wt/pool/events":         accessTokenSessionRule,
+	"POST /api/wt/donations/build":    accessTokenSessionRule,
+	"POST /api/wt/pool/ais/give":      accessTokenSessionRule,
+	"POST /api/wt/pool/ais/take":      accessTokenSessionRule,
 }
 
 var (

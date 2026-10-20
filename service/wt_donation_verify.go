@@ -199,6 +199,8 @@ func WtForgetCredentialUsage(authIndex string) {
 func WtResetDonationCaches() {
 	WtForgetPoolCredentials()
 	WtForgetAisRotation()
+	WtForgetBuildStatus()
+	wtBuildForgetSession()
 	WtResetPoolLevel()
 	wtUsageMu.Lock()
 	clear(wtUsageCache)

@@ -28,8 +28,8 @@ import (
 // the pool and forgotten: it is never logged, stored or echoed. Log lines
 // carry the operation and the HTTP status only.
 
-// The relay models of the group and their upstream names are the table
-// model.WtAisModels; every one of them carries WtAisModelPrefix.
+// The relay models of the group and their upstream names are the
+// WtAisProvider rows of model.WtAisModels; every one carries WtAisModelPrefix.
 const (
 	WtAisModelPrefix    = "AIS PG-"
 	WtAisGroup          = "AIS PG"
@@ -159,7 +159,8 @@ func WtAisPoolStateOf(entry *WtAisRotationEntry, now time.Time) WtAisPoolInfo {
 	info.Success, info.Failed, info.RateLimited = entry.Success, entry.Errors+entry.AuthErrors, entry.RateLimited
 	today := now.In(wtPacific).Format("2006-01-02")
 	unix := float64(now.Unix())
-	for _, spec := range model.WtAisModels {
+	specs := model.WtAisModelsOf(model.WtAisProvider)
+	for _, spec := range specs {
 		if entry.ModelRequestsDates[spec.Upstream] == today {
 			info.RequestsToday += entry.ModelRequests[spec.Upstream]
 		}
@@ -172,7 +173,7 @@ func WtAisPoolStateOf(entry *WtAisRotationEntry, now time.Time) WtAisPoolInfo {
 		info.State, info.Message = WtAisStateExpired, "The pool can no longer sign in with this account; remove it and donate again"
 	case entry.AuthCooldown > unix:
 		info.State, info.Message, info.RetryAt = WtAisStateCooldown, "The pool paused this account after a sign-in error", int64(entry.AuthCooldown)
-	case len(info.Cooling) > 0 && len(info.Cooling) == len(model.WtAisModels):
+	case len(info.Cooling) > 0 && len(info.Cooling) == len(specs):
 		earliest := info.Cooling[0].RetryAt
 		for _, cooling := range info.Cooling[1:] {
 			earliest = min(earliest, cooling.RetryAt)

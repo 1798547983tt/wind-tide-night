@@ -272,3 +272,81 @@ ais.example.com {
 3. 验证：`curl -s https://<域名>/api/status` 里 `wt_ais_enabled` 为 `true`；后台「渠道」里出现标签 `wt-ais` 的渠道 `AIS playground`（站点每次启动都会把它和分组 `AIS PG`、模型倍率改回约定值，见 `API.md` §15.2）；登录后「捐赠账号」页多出 AIS playground 和算力池两个标签。
 4. 第一次有人捐成功后，用站长账号（不计次数）各调一次 `AIS PG-gemini-4-argon` 和 `AIS PG-gemini-3.8-flash`，确认 AI Studio 那边确实有 `gemini-4-argon` 和 `gemini-3.8-flash`；没有的话改 `.env` 不解决问题，要改代码里的模型表（`WtAisModels`）。
 5. 回退：删掉这三行，`docker compose up -d site`。标签和页面隐藏，渠道、分组和三张表留着无害；要彻底清理再手动删渠道。
+
+## 11. 接入 BUILD 号池（可选）
+
+BUILD 标签和算力池页的 BUILD 水箱要连一个同机部署的 AIStudioToAPI（下称 BUILD）：它用受控浏览器打开 AI Studio 的 Build 页面，拿成员捐的 Google 登录去调模型，对外是 OpenAI / Gemini 兼容接口。站点只用它的控制台接口（登录、`/api/status`、`/api/files`、`/api/accounts/*`）和中转接口，约定见 `API.md` §15。
+
+### 11.1 部署 BUILD 本身
+
+放在 `/opt/aistudio-to-api`，和站点同一个 Docker 网络（`wind-tide_edge`），不发布任何端口。`compose.yaml` 要点（镜像按 digest 固定，升级时改 digest 再 `docker compose up -d`）：
+
+```yaml
+services:
+  aistudio-to-api:
+    image: ghcr.io/ibuhub/aistudio-to-api:latest@sha256:<digest>
+    restart: unless-stopped
+    env_file: .env                 # WEB_CONSOLE_PASSWORD=<控制台密码>、API_KEYS=<中转密钥>
+    environment:
+      TZ: Asia/Shanghai
+      HOST: 0.0.0.0
+      PORT: "7860"
+      MAX_CONTEXTS: "2"            # 同时开着的浏览器上下文数
+      SWITCH_ON_USES: "10"         # 每 10 次请求换下一个账号，让捐来的号轮着用
+      CHECK_UPDATE: "false"
+      ENABLE_AUTH_UPDATE: "true"
+      STREAMING_MODE: real
+      RATE_LIMIT_MAX_ATTEMPTS: "5"
+    volumes:
+      - ./configs/auth:/app/configs/auth   # 成员捐的登录文件 auth-<n>.json，目录 700
+      - ./data:/app/data
+    networks: [edge]
+    mem_limit: 1536m
+    memswap_limit: 2560m
+    cpus: 1.5
+    shm_size: 512m
+    pids_limit: 1024
+    security_opt: ["no-new-privileges:true"]
+    logging: {driver: json-file, options: {max-size: 10m, max-file: "3"}}
+networks:
+  edge:
+    external: true
+    name: wind-tide_edge
+```
+
+1. `openssl rand -hex 24` 生成控制台密码、`openssl rand -hex 32` 生成中转密钥，分别写进 `.env` 的 `WEB_CONSOLE_PASSWORD` 和 `API_KEYS`（权限 600），中转密钥另存一份到 `relay.key`（600）。两者都不要写进任何文档或聊天。
+2. `mkdir -p configs/auth data && chmod 700 configs/auth data`，然后 `docker compose up -d`，等 `docker compose ps` 显示 healthy（镜像自带健康检查）。
+3. 轮询规则是镜像自己的，站点改不了：每 `SWITCH_ON_USES` 次请求、连续 3 次失败、或上游 429/503 时换下一个账号；没有"每次请求随机选号"的选项。
+4. 内存：开浏览器时会占到几百 MB，上面的 1.5 GB 上限按 4 GB 内存的机器设；2 GB 的机器上它和 AIS 只能二选一。
+
+### 11.2 控制台域名
+
+同 §10.2，在服务器的 `Caddyfile` 末尾加一个块（先去 DNS 加 `build` 的 A 记录指向服务器，再加块；记录没生效前 Caddy 申请不到证书）：
+
+```caddyfile
+build.example.com {
+    # 和 ais 块一样的安全响应头
+    @relay path /v1/* /v1beta/*
+    respond @relay 404          # 中转接口只允许站点容器内网访问
+    handle {
+        reverse_proxy aistudio-to-api:7860
+    }
+}
+```
+
+`docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile </dev/null`。证书拿到后 `https://build.example.com/health` 应返回 200，`/v1/models` 应是 404。控制台里能看到成员捐的登录文件（账号名 `wt-<成员 id>-<随机>`），**不要在控制台手动删它们**：要删就在站点页面上移除。
+
+### 11.3 接到站点
+
+1. `.env` 追加三行（密码来自 `/opt/aistudio-to-api/.env`，密钥来自 `relay.key`，都不要打印）：
+
+   ```
+   WT_BUILD_URL=http://aistudio-to-api:7860
+   WT_BUILD_PASSWORD=<BUILD 控制台密码>
+   WT_BUILD_API_KEY=<relay.key 的内容>
+   ```
+
+2. 站点的 `compose.yaml` 要把这三个变量传给 `site`（仓库里 `wind-tide/deploy/compose.yaml` 已带；按老版本部署的服务器要照着补三行），`docker compose config | grep -c WT_BUILD_` 应为 3，再 `docker compose pull site && docker compose up -d site`。
+3. 验证：`curl -s https://<域名>/api/status` 里 `wt_build_enabled` 为 `true`；后台「渠道」里出现标签 `wt-build` 的渠道 `BUILD`（分组 `BUILD`、模型 `Build-gemini-3.8-flash`，站点每次启动都会把它改回约定值，见 `API.md` §15.2）；登录后「捐赠账号」页多出 BUILD 标签，算力池页多出 BUILD 水箱。
+4. 第一次有人捐成功后，用站长账号（不计次数）调一次 `Build-gemini-3.8-flash`，确认控制台那边能用 `gemini-3.8-flash`；要换模型只能改代码里的模型表（`WtAisModels`）。
+5. 回退：删掉这三行，`docker compose up -d site`。标签和水箱隐藏，渠道、分组和表留着无害；要彻底清理再手动删渠道。

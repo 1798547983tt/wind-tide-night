@@ -78,8 +78,24 @@ _Avoid_: 使用榜、活跃榜
 按当前余额给成员排名。
 _Avoid_: 金额榜、财富榜
 
+**失败榜** (Failure board):
+按某个榜期内上游返回失败的调用次数给成员排名，榜期同调用榜。
+_Avoid_: 黑榜、错误榜
+
+**连击** (Streak):
+一个成员不间断的连续成功（或连续失败）调用的次数；一次相反的结果就把它归零，最长的一段单独记着。
+_Avoid_: 连胜、combo
+
+**连续成功榜** (Success streak board):
+按成员有史以来最长的一段连续成功调用排名，旁边标出此刻正在进行的那一段。
+_Avoid_: 连胜榜
+
+**连续失败榜** (Fail streak board):
+按成员有史以来最长的一段连续失败调用排名，旁边标出此刻正在进行的那一段。
+_Avoid_: 连败榜
+
 **榜期** (Leaderboard period):
-调用榜的统计范围：今日、近 7 天、总榜；"今日"按签到日计算。
+调用榜和失败榜的统计范围：今日、近 7 天、总榜；"今日"按签到日计算。连击榜和余额榜没有榜期。
 _Avoid_: 周期、时间段
 
 **模型榜** (Model leaderboard):
@@ -111,27 +127,35 @@ _Avoid_: 跟随系统
 ## 捐赠
 
 **捐赠账号** (Donated account):
-成员交给站点号池统一调配的账号：Antigravity 账号通过 Google 授权交，AI Studio 账号通过登录 Cookie 交。
+成员交给站点号池统一调配的账号：Antigravity 账号通过 Google 授权交，AI Studio 账号通过登录 Cookie 交（给 AIS 号池或 BUILD 号池）。
 _Avoid_: 捐号、上传账号
 
 **号池** (Account pool):
-站点接入的账号代理持有的全部凭证，站点渠道从里面轮询取号。现在有两个：Antigravity 号池（CLIProxyAPI）和 AIS 号池（aistudio-api）。
+站点接入的账号代理持有的全部凭证，站点渠道从里面轮询取号。现在有三个：Antigravity 号池（CLIProxyAPI）、AIS 号池（aistudio-api）和 BUILD 号池（AIStudioToAPI）。
 _Avoid_: 账号库
 
 **AIS 账号** (AI Studio account):
 成员以登录 Cookie 的形式捐给 AIS 号池的 Google AI Studio 账号；只取 Cookie 里浏览器的第一个账号。
 _Avoid_: Cookie 号、AIS 号
 
+**BUILD 账号** (BUILD account):
+成员以登录 Cookie 的形式捐给 BUILD 号池的 Google AI Studio 账号；号池把它存成一个带编号的登录文件（第 n 号位），按编号轮着用，不读邮箱。
+_Avoid_: Build 号、编号账号
+
 **次数** (Calls):
-成员当天在某个 AIS PG 模型上还能调用的次数，每个模型各记各的。每个在池的 AIS 账号每天给捐赠者 `AIS PG-gemini-4-argon` 50 次、`AIS PG-gemini-3.8-flash` 100 次，当天没用完不结转。
+成员当天在某个号池模型上还能调用的次数，每个模型各记各的。每个在池的 AIS 账号每天给捐赠者 `AIS PG-gemini-4-argon` 50 次、`AIS PG-gemini-3.8-flash` 100 次；每个在池的 BUILD 账号每天给 `Build-gemini-3.8-flash` 100 次。AIS 和 BUILD 分开算，当天没用完不结转。
 _Avoid_: 额度、配额、quota
 
 **公共池** (Public pool):
-当天由成员捐出的次数汇成的池子，每个 AIS PG 模型一个；有 AIS 账号的成员每天每个模型最多从里面取 100 次加到自己的次数里。
+当天由成员捐出的次数汇成的池子，每个号池模型一个（AIS PG 两个、BUILD 一个）；有对应号池账号的成员每天每个模型最多从里面取 100 次加到自己的次数里。
 _Avoid_: 公共号池、次数池
 
+**潮池** (Shared tide pool):
+算力池页顶部把全部公共池加在一起的动态展示：水位是今天捐出的次数里还留在池里的比例，有人捐就涨、有人取就落，数字跟着跳。
+_Avoid_: 总池、大水池
+
 **算力池** (Pool page):
-「捐赠账号」页的第三个标签：两个号池的水位、本人次数与公共池、公告和排行榜。
+「捐赠账号」页的最后一个标签：顶部的潮池、每个号池的水箱（水位或本人次数与公共池）和公告。排行榜不在这里，在「排行榜」页。
 _Avoid_: 水位页、算力榜
 
 **水位** (Pool level):
@@ -139,12 +163,8 @@ Antigravity 号池里全部账号剩余用量的平均比例，按模型组和�
 _Avoid_: 总额度
 
 **公告** (Announcement):
-有人捐赠或移除账号、捐次数、取次数时自动生成的一条公开消息，带站内昵称（没有则用户名），只留最新 200 条。
+有人捐赠或移除账号（三个号池都算）、捐次数、取次数时自动生成的一条公开消息，带站内昵称（没有则用户名），只留最新 200 条。
 _Avoid_: 通知、广播
-
-**失败榜** (Failure board):
-按某个 AIS PG 模型的调用失败次数排序的榜单，和调用次数榜一样按模型分开、分今日与累计。
-_Avoid_: 黑榜
 
 **剩余用量** (Remaining allowance):
 Google 给某个捐赠账号的、按模型组和时间窗口计的剩余比例。不是成员余额。

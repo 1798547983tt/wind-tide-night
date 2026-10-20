@@ -11,10 +11,31 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
-// wind-tide: the site owns the relay side of the AIS playground pool
-// (wind-tide/API.md §15): the "AIS PG" group, the ratios of the AIS models
-// and the channel tagged wt-ais that forwards them to aistudio-api. Every
-// start puts them back; the owner may change anything else in the admin UI.
+// wind-tide: the site owns the relay side of the donated-account pools
+// (wind-tide/API.md §15): the "AIS PG" and "BUILD" groups, the ratios of
+// their relay models and the channels tagged wt-ais and wt-build that forward
+// them to aistudio-api and AIStudioToAPI. Every start puts them back; the
+// owner may change anything else in the admin UI.
+
+// wtPoolChannel is the relay side of one pool as the site wants it.
+type wtPoolChannel struct {
+	provider   string
+	group      string
+	groupLabel string
+	name       string
+	tag        string
+	baseURL    string
+	key        string
+	log        string
+}
+
+func wtAisPoolChannel() wtPoolChannel {
+	return wtPoolChannel{provider: model.WtAisProvider, group: WtAisGroup, groupLabel: WtAisGroupLabel, name: WtAisChannelName, tag: WtAisChannelTag, baseURL: wtAisURL(), key: WtAisAPIKey(), log: "wt ais"}
+}
+
+func wtBuildPoolChannel() wtPoolChannel {
+	return wtPoolChannel{provider: model.WtBuildProvider, group: WtBuildGroup, groupLabel: WtBuildGroupLabel, name: WtBuildChannelName, tag: WtBuildChannelTag, baseURL: wtBuildURL(), key: WtBuildAPIKey(), log: "wt build"}
+}
 
 // WtEnsureAisChannel creates or repairs the group, the ratios and the
 // channel of the AIS playground pool. It does nothing while the pool is not
@@ -23,18 +44,31 @@ func WtEnsureAisChannel() error {
 	if !WtAisEnabled() {
 		return nil
 	}
+	return wtEnsurePoolChannel(wtAisPoolChannel())
+}
+
+// WtEnsureBuildChannel is WtEnsureAisChannel for the BUILD pool.
+func WtEnsureBuildChannel() error {
+	if !WtBuildEnabled() {
+		return nil
+	}
+	return wtEnsurePoolChannel(wtBuildPoolChannel())
+}
+
+func wtEnsurePoolChannel(pool wtPoolChannel) error {
+	specs := model.WtAisModelsOf(pool.provider)
 	var changes []string
 	groupRatios := ratio_setting.GetGroupRatioCopy()
-	if _, ok := groupRatios[WtAisGroup]; !ok {
-		groupRatios[WtAisGroup] = 1
+	if _, ok := groupRatios[pool.group]; !ok {
+		groupRatios[pool.group] = 1
 		if err := wtUpdateOptionJSON("GroupRatio", groupRatios); err != nil {
 			return err
 		}
 		changes = append(changes, "group ratio")
 	}
 	usableGroups := setting.GetUserUsableGroupsCopy()
-	if _, ok := usableGroups[WtAisGroup]; !ok {
-		usableGroups[WtAisGroup] = WtAisGroupLabel
+	if _, ok := usableGroups[pool.group]; !ok {
+		usableGroups[pool.group] = pool.groupLabel
 		if err := wtUpdateOptionJSON("UserUsableGroups", usableGroups); err != nil {
 			return err
 		}
@@ -50,7 +84,7 @@ func WtEnsureAisChannel() error {
 		{"CompletionRatio", ratio_setting.GetCompletionRatioCopy()},
 	} {
 		changed := false
-		for _, spec := range model.WtAisModels {
+		for _, spec := range specs {
 			want := 1.0
 			if upstream, ok := ratios.values[spec.Upstream]; ok {
 				want = upstream
@@ -70,11 +104,11 @@ func WtEnsureAisChannel() error {
 		changes = append(changes, strings.ToLower(ratios.option))
 	}
 
-	mapping, err := common.Marshal(wtAisModelMapping())
+	mapping, err := common.Marshal(wtPoolModelMapping(specs))
 	if err != nil {
 		return err
 	}
-	channels, err := model.GetChannelsByTag(WtAisChannelTag, true, true)
+	channels, err := model.GetChannelsByTag(pool.tag, true, true)
 	if err != nil {
 		return err
 	}
@@ -87,14 +121,14 @@ func WtEnsureAisChannel() error {
 	switch {
 	case channel == nil:
 		channel = &model.Channel{CreatedTime: common.GetTimestamp()}
-		channel.SetTag(WtAisChannelTag)
-		wtApplyAisChannel(channel, string(mapping))
+		channel.SetTag(pool.tag)
+		wtApplyPoolChannel(channel, pool, specs, string(mapping))
 		if err := channel.Insert(); err != nil {
 			return err
 		}
 		changes = append(changes, "channel created")
-	case !wtAisChannelMatches(channel):
-		wtApplyAisChannel(channel, string(mapping))
+	case !wtPoolChannelMatches(channel, pool, specs):
+		wtApplyPoolChannel(channel, pool, specs, string(mapping))
 		if err := channel.Update(); err != nil {
 			return err
 		}
@@ -107,7 +141,7 @@ func WtEnsureAisChannel() error {
 	if len(changes) > 0 {
 		summary = strings.Join(changes, ", ")
 	}
-	common.SysLog(common.LogText("wt ais: channel %s: %s", WtAisChannelName, summary))
+	common.SysLog(common.LogText("%s: channel %s: %s", pool.log, pool.name, summary))
 	return nil
 }
 
@@ -120,54 +154,54 @@ func wtUpdateOptionJSON(key string, value any) error {
 	return model.UpdateOption(key, string(encoded))
 }
 
-// wtAisModelNames is the channel's model list, relay names in table order.
-func wtAisModelNames() string {
-	names := make([]string, 0, len(model.WtAisModels))
-	for _, spec := range model.WtAisModels {
+// wtPoolModelNames is the channel's model list, relay names in table order.
+func wtPoolModelNames(specs []model.WtAisModelSpec) string {
+	names := make([]string, 0, len(specs))
+	for _, spec := range specs {
 		names = append(names, spec.Name)
 	}
 	return strings.Join(names, ",")
 }
 
-// wtAisModelMapping maps each relay model to the model aistudio-api serves.
-func wtAisModelMapping() map[string]string {
-	mapping := make(map[string]string, len(model.WtAisModels))
-	for _, spec := range model.WtAisModels {
+// wtPoolModelMapping maps each relay model to the model the pool serves.
+func wtPoolModelMapping(specs []model.WtAisModelSpec) map[string]string {
+	mapping := make(map[string]string, len(specs))
+	for _, spec := range specs {
 		mapping[spec.Name] = spec.Upstream
 	}
 	return mapping
 }
 
-// wtApplyAisChannel writes the fields the site owns on the AIS channel.
-func wtApplyAisChannel(channel *model.Channel, mapping string) {
-	baseURL, priority, weight := wtAisURL(), int64(0), uint(0)
+// wtApplyPoolChannel writes the fields the site owns on the pool's channel.
+func wtApplyPoolChannel(channel *model.Channel, pool wtPoolChannel, specs []model.WtAisModelSpec, mapping string) {
+	baseURL, priority, weight := pool.baseURL, int64(0), uint(0)
 	channel.Type = constant.ChannelTypeGemini
-	channel.Key = WtAisAPIKey()
+	channel.Key = pool.key
 	channel.BaseURL = &baseURL
-	channel.Models = wtAisModelNames()
-	channel.Group = "default,vip,svip," + WtAisGroup
+	channel.Models = wtPoolModelNames(specs)
+	channel.Group = "default,vip,svip," + pool.group
 	channel.ModelMapping = &mapping
-	channel.Name = WtAisChannelName
+	channel.Name = pool.name
 	channel.Status = common.ChannelStatusEnabled
 	channel.Priority = &priority
 	channel.Weight = &weight
 }
 
-// wtAisChannelMatches reports whether the fields the site owns are as the
+// wtPoolChannelMatches reports whether the fields the site owns are as the
 // site wants them. The mapping is compared as a map, so the order its JSON
 // was written in does not matter.
-func wtAisChannelMatches(channel *model.Channel) bool {
+func wtPoolChannelMatches(channel *model.Channel, pool wtPoolChannel, specs []model.WtAisModelSpec) bool {
 	var mapping map[string]string
 	if common.UnmarshalJsonStr(channel.GetModelMapping(), &mapping) != nil {
 		return false
 	}
 	return channel.Type == constant.ChannelTypeGemini &&
-		channel.Key == WtAisAPIKey() &&
-		channel.BaseURL != nil && *channel.BaseURL == wtAisURL() &&
-		channel.Models == wtAisModelNames() &&
-		channel.Group == "default,vip,svip,"+WtAisGroup &&
-		maps.Equal(mapping, wtAisModelMapping()) &&
-		channel.Name == WtAisChannelName &&
+		channel.Key == pool.key &&
+		channel.BaseURL != nil && *channel.BaseURL == pool.baseURL &&
+		channel.Models == wtPoolModelNames(specs) &&
+		channel.Group == "default,vip,svip,"+pool.group &&
+		maps.Equal(mapping, wtPoolModelMapping(specs)) &&
+		channel.Name == pool.name &&
 		channel.Status == common.ChannelStatusEnabled &&
 		channel.GetPriority() == 0 &&
 		channel.GetWeight() == 0

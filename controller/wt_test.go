@@ -98,6 +98,9 @@ func setupWtDatabase(t *testing.T, kind, dsn string) {
 		t.Setenv("SQL_DSN", isolated)
 	}
 	t.Cleanup(func() {
+		// The call counters are written off the request path; let them land
+		// before the database goes.
+		model.WtFlushCallCounters()
 		if model.DB != previousDB {
 			_ = model.CloseDB()
 		}
@@ -1404,6 +1407,13 @@ func TestWtLeaderboardAndPublicStats(t *testing.T) {
 			{UserId: alpha.Id, CheckinDate: "2026-10-14", QuotaAwarded: 100, CreatedAt: now.Unix()},
 			{UserId: bravo.Id, CheckinDate: "2026-10-15", QuotaAwarded: 250, CreatedAt: now.Unix()},
 		}).Error)
+		// The failed and streak boards read the call counters: filled once
+		// from the logs in the order they were written, then moved by every
+		// call; a second fill changes nothing.
+		require.NoError(t, model.WtBackfillCallStats())
+		require.NoError(t, model.WtRecordCall(bravo.Id, false, now))
+		require.NoError(t, model.WtRecordCall(bravo.Id, true, now))
+		require.NoError(t, model.WtBackfillCallStats())
 
 		for _, board := range []struct {
 			board, period string
@@ -1435,6 +1445,31 @@ func TestWtLeaderboardAndPublicStats(t *testing.T) {
 				{Rank: 3, UserId: charlie.Id, DisplayName: "Charlie", Value: 20},
 				{Rank: 4, UserId: alpha.Id, DisplayName: "Alpha", AvatarURL: alphaAvatar, Value: 10},
 			}, &model.WtLeaderboardRank{Rank: 1, Value: 30}},
+			{model.WtBoardFailed, model.WtPeriodToday, []model.WtLeaderboardItem{
+				{Rank: 1, UserId: echo.Id, DisplayName: "Echo", Value: 3},
+				{Rank: 2, UserId: bravo.Id, DisplayName: "Bravo", Value: 1},
+			}, &model.WtLeaderboardRank{Rank: 1, Value: 3}},
+			{model.WtBoardFailed, model.WtPeriodWeek, []model.WtLeaderboardItem{
+				{Rank: 1, UserId: echo.Id, DisplayName: "Echo", Value: 3},
+				{Rank: 2, UserId: bravo.Id, DisplayName: "Bravo", Value: 1},
+			}, &model.WtLeaderboardRank{Rank: 1, Value: 3}},
+			{model.WtBoardFailed, model.WtPeriodAll, []model.WtLeaderboardItem{
+				{Rank: 1, UserId: echo.Id, DisplayName: "Echo", Value: 3},
+				{Rank: 2, UserId: bravo.Id, DisplayName: "Bravo", Value: 1},
+			}, &model.WtLeaderboardRank{Rank: 1, Value: 3}},
+			// Streaks rank the best run; the run the member is on now rides
+			// along. Echo's four calls came before the three failures.
+			{model.WtBoardSuccessStreak, "", []model.WtLeaderboardItem{
+				{Rank: 1, UserId: alpha.Id, DisplayName: "Alpha", AvatarURL: alphaAvatar, Value: 13, Current: 13},
+				{Rank: 2, UserId: echo.Id, DisplayName: "Echo", Value: 4},
+				{Rank: 3, UserId: charlie.Id, DisplayName: "Charlie", Value: 3, Current: 3},
+				{Rank: 4, UserId: bravo.Id, DisplayName: "Bravo", Value: 2, Current: 1},
+				{Rank: 4, UserId: delta.Id, DisplayName: "delta", Value: 2, Current: 2},
+			}, &model.WtLeaderboardRank{Rank: 2, Value: 4}},
+			{model.WtBoardFailStreak, "", []model.WtLeaderboardItem{
+				{Rank: 1, UserId: echo.Id, DisplayName: "Echo", Value: 3, Current: 3},
+				{Rank: 2, UserId: bravo.Id, DisplayName: "Bravo", Value: 1},
+			}, &model.WtLeaderboardRank{Rank: 1, Value: 3}},
 		} {
 			built, err := model.BuildWtLeaderboard(board.board, board.period, now)
 			require.NoError(t, err)
@@ -1486,7 +1521,21 @@ func TestWtLeaderboardAndPublicStats(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, "calls", defaults["board"])
 		assert.Equal(t, "today", defaults["period"])
-		for _, target := range []string{"/api/wt/leaderboard?board=calls&period=month", "/api/wt/leaderboard?board=credits"} {
+		ok, failedView := served(charlie.Id, "/api/wt/leaderboard?board=failed")
+		require.True(t, ok)
+		assert.Equal(t, "failed", failedView["board"])
+		assert.Equal(t, "today", failedView["period"], "the failed board defaults to today")
+		ok, streakView := served(charlie.Id, "/api/wt/leaderboard?board=success_streak&period=week")
+		require.True(t, ok)
+		assert.Equal(t, "success_streak", streakView["board"])
+		assert.Equal(t, "", streakView["period"], "streaks have no period")
+		streakItems, _ := streakView["items"].([]any)
+		require.NotEmpty(t, streakItems)
+		leader, _ := streakItems[0].(map[string]any)
+		assert.Equal(t, float64(13), leader["current"], "the current run rides along")
+		ok, _ = served(charlie.Id, "/api/wt/leaderboard?board=fail_streak")
+		require.True(t, ok)
+		for _, target := range []string{"/api/wt/leaderboard?board=calls&period=month", "/api/wt/leaderboard?board=failed&period=month", "/api/wt/leaderboard?board=credits"} {
 			ok, _ := served(charlie.Id, target)
 			assert.False(t, ok, target)
 		}

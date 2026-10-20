@@ -140,15 +140,23 @@ func main() {
 	// (wind-tide/API.md §14).
 	service.StartWtDonationVerifyTask()
 
-	// wind-tide: the AIS playground pool (wind-tide/API.md §15): the site
-	// owns the AIS channel, group and ratios, settles the AI Studio accounts a
-	// restart left verifying and keeps the Antigravity level snapshot fresh.
+	// wind-tide: the AIS playground and BUILD pools (wind-tide/API.md §15): the
+	// site owns their channels, groups and ratios, settles the accounts a
+	// restart left verifying, keeps the Antigravity level snapshot fresh and
+	// fills the leaderboard counters (§7) from the logs once.
 	if common.IsMasterNode {
 		if err := service.WtEnsureAisChannel(); err != nil {
 			common.SysError(common.LogText("wt ais: the AIS channel could not be prepared: %s", err.Error()))
 		}
+		if err := service.WtEnsureBuildChannel(); err != nil {
+			common.SysError(common.LogText("wt build: the BUILD channel could not be prepared: %s", err.Error()))
+		}
+		if err := model.WtBackfillCallStats(); err != nil {
+			common.SysError(common.LogText("wt calls: the leaderboard counters could not be filled from the logs: %s", err.Error()))
+		}
 	}
 	service.StartWtAisVerifyTask()
+	service.StartWtBuildVerifyTask()
 	service.StartWtPoolLevelTask()
 
 	// Subscription quota reset task (daily/weekly/monthly/custom)

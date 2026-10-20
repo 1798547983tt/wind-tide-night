@@ -133,6 +133,8 @@ func GetStatus(c *gin.Context) {
 		// wind-tide: and AI Studio accounts to the AIS playground pool
 		// (wind-tide/API.md §15).
 		"wt_ais_enabled": service.WtAisEnabled(),
+		// wind-tide: and Build accounts to the BUILD pool (wind-tide/API.md §15).
+		"wt_build_enabled": service.WtBuildEnabled(),
 	}
 
 	// 根据启用状态注入可选内容

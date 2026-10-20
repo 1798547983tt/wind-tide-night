@@ -37,8 +37,11 @@ var (
 func WtGetLeaderboard(c *gin.Context) {
 	board := c.DefaultQuery("board", model.WtBoardCalls)
 	period := c.Query("period")
-	switch board {
-	case model.WtBoardCalls:
+	switch {
+	case !model.WtKnownBoard(board):
+		common.ApiErrorT(c, "Invalid parameters")
+		return
+	case model.WtBoardHasPeriod(board):
 		if period == "" {
 			period = model.WtPeriodToday
 		}
@@ -46,11 +49,8 @@ func WtGetLeaderboard(c *gin.Context) {
 			common.ApiErrorT(c, "Invalid parameters")
 			return
 		}
-	case model.WtBoardBalance:
-		period = ""
 	default:
-		common.ApiErrorT(c, "Invalid parameters")
-		return
+		period = ""
 	}
 
 	now := time.Now()
