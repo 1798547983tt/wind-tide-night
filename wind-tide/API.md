@@ -18,6 +18,8 @@
 | `WT_BUILD_URL` | 可选。第三个号池（AIStudioToAPI，下称 BUILD）的地址，只到端口、不带路径，例如 `http://aistudio-to-api:7860`。与下面两个一起非空才开启 BUILD 号池（第 15 节） |
 | `WT_BUILD_PASSWORD` | 可选。BUILD 控制台密码的明文，站点用它登录控制台（`POST /login` 换一个只放在内存里的会话 Cookie，控制台重启后自动重新登录）。只从环境变量读，不进 options 表 |
 | `WT_BUILD_API_KEY` | 可选。在 BUILD 里登记的中转密钥（它的 `API_KEYS` 之一），站点启动时写进渠道 `BUILD` 的密钥（第 15.2 节） |
+| `WT_WB_URL` | 可选。第四个号池（workbuddy2api-panel，下称 WB 面板）的地址，只到端口、不带路径，例如 `http://workbuddy2api:7863`。与下面一个一起非空才开启 WorkBuddy 号池（第 16 节） |
+| `WT_WB_API_KEY` | 可选。WB 面板 `config.json` 里的 `api_key`：站点用它调面板的管理接口（`Authorization: Bearer`），启动时也写进渠道 `WorkBuddy` 的密钥（第 16.2 节）。只从环境变量读，不进 options 表 |
 
 **站长账号**：每次启动都检查 root 账号。
 
@@ -52,6 +54,7 @@
 - `wt_donation_enabled: true|false`：第 1 节的两个号池变量都非空时为 `true`（第 14 节）
 - `wt_ais_enabled: true|false`：第 1 节的三个 AIS 变量都非空时为 `true`（第 15 节）
 - `wt_build_enabled: true|false`：第 1 节的三个 BUILD 变量都非空时为 `true`（第 15 节）
+- `wt_wb_enabled: true|false`：第 1 节的两个 WorkBuddy 变量都非空时为 `true`（第 16 节）
 
 ## 3. Discord 登录闸门
 
@@ -420,6 +423,14 @@ new-api wt emergency-login [--base-url https://your.site]
 | `You can only give calls you still have today` | 捐次数：超过今天剩余 |
 | `You can take at most {{max}} calls a day from the pool` | 取次数：当天累计会超过 100 |
 | `The pool does not hold that many calls right now` | 取次数：公共池余额不够 |
+| `The WorkBuddy pool is not configured` | WorkBuddy 专属接口在功能未配置时（200，第 16.3 节） |
+| `Choose the CodeBuddy or the WorkBuddy sign-in` | WorkBuddy 捐赠：`realm` 不是 `cn` / `global`（400，第 16.4 节） |
+| `WorkBuddy did not hand out a sign-in link; try again in a moment` | WorkBuddy 捐赠：面板回 502，腾讯没发出登录链接 |
+| `The sign-in was not finished in time; start again` | WorkBuddy 核验：15 分钟内没登录完，或面板忘了这次登录 |
+| `The pool can no longer use this account` | WorkBuddy 测试：uid 不在面板里，或已失效 |
+| `The pool owner paused this account` | WorkBuddy 记录的号池状态 `paused` |
+| `Rate-limited; the pool is resting this account` | WorkBuddy 记录的号池状态 `cooldown`（被限流） |
+| `Credits used up for today` | WorkBuddy 记录的号池状态 `cooldown`（额度用尽） |
 
 另外沿用上游已有的消息：`State parameter is empty or mismatched`（Discord 回调缺少或对不上登录 Cookie）、`User has been banned`、`Invalid parameters`，以及第 5 节的二次验证消息。
 
@@ -507,7 +518,7 @@ new-api wt emergency-login [--base-url https://your.site]
 
 成员把不用的 Google AI Studio 账号（浏览器登录 Cookie）交给站点的 Cookie 号池，换取每日调用次数。Cookie 号池有两个：aistudio-api（下称 AIS，对应 `AIS PG` 分组的两个模型）和 AIStudioToAPI（下称 BUILD，对应 `BUILD` 分组的一个模型），两边的账号、次数和公共池各算各的，同一个 Cookie 可以分别捐给两边。「算力池」页面顶部是把全部公共池加在一起的动态「潮池」，下面是每个号池的水箱（Antigravity 的水位，AIS 和 BUILD 的本人次数与公共池）和公告；排行榜（含失败榜和连击榜）在第 7 节的 `/rankings`。术语见根目录 `CONTEXT.md`「捐赠」组，部署见 `DEPLOY.md` §10（AIS）和 §11（BUILD）。
 
-开关：AIS 是三个环境变量 `WT_AIS_URL`、`WT_AIS_PASSWORD`、`WT_AIS_API_KEY`（三者齐全才算开启）和第 2 节的 `wt_ais_enabled`；BUILD 是 `WT_BUILD_URL`、`WT_BUILD_PASSWORD`、`WT_BUILD_API_KEY` 和 `wt_build_enabled`；第 14 节的 Antigravity 号池照旧由 `wt_donation_enabled` 控制，三个池子互不依赖。页面「捐赠账号」分四个标签：Antigravity（第 14 节）、AIS playground、BUILD、算力池，标签由查询参数 `tab=antigravity|aistudio|build|pool` 选择，站点没开的池子没有标签。
+开关：AIS 是三个环境变量 `WT_AIS_URL`、`WT_AIS_PASSWORD`、`WT_AIS_API_KEY`（三者齐全才算开启）和第 2 节的 `wt_ais_enabled`；BUILD 是 `WT_BUILD_URL`、`WT_BUILD_PASSWORD`、`WT_BUILD_API_KEY` 和 `wt_build_enabled`；第 14 节的 Antigravity 号池照旧由 `wt_donation_enabled` 控制，三个池子互不依赖。页面「捐赠账号」最多五个标签：Antigravity（第 14 节）、AIS playground、BUILD、WorkBuddy（第 16 节）、算力池，标签由查询参数 `tab=antigravity|aistudio|build|workbuddy|pool` 选择，站点没开的池子没有标签。
 
 ### 15.1 规则
 
@@ -624,7 +635,7 @@ AIS 专属接口（提交 Cookie 给 AIS、捐/取 AIS 模型的次数，以及�
 
 ### 15.8 公告
 
-`GET /api/wt/pool/events?after=88` → `{"items": […]}`，只给 id 大于 `after` 的，最新在前，最多 50 条；`kind` 取值 `antigravity_donated`、`antigravity_removed`、`ais_account_donated`、`ais_account_removed`、`ais_given`、`ais_taken`、`build_account_donated`、`build_account_removed`、`build_given`、`build_taken`，`amount` 和 `model` 只有捐/取次数时非空。页面把它们读成句子，并在有新公告时让潮池涨落一下。
+`GET /api/wt/pool/events?after=88` → `{"items": […]}`，只给 id 大于 `after` 的，最新在前，最多 50 条；`kind` 取值 `antigravity_donated`、`antigravity_removed`、`ais_account_donated`、`ais_account_removed`、`ais_given`、`ais_taken`、`build_account_donated`、`build_account_removed`、`build_given`、`build_taken`、`wb_account_donated`、`wb_account_removed`（第 16 节），`amount` 和 `model` 只有捐/取次数时非空。页面把它们读成句子，并在有新公告时让潮池涨落一下。
 
 ### 15.9 调用闸门
 
@@ -637,3 +648,81 @@ AIS 专属接口（提交 Cookie 给 AIS、捐/取 AIS 模型的次数，以及�
 表：`wt_donations` 复用（AIS：`provider` 为 `aistudio`，`credential_name` 存号池账号 id；BUILD：`provider` 为 `build`，`credential_name` 存控制台里的文件编号；两者 `auth_index` 都存 Cookie 指纹，`project_id` 为空）；`wt_ais_ledgers`（`user_id` + `day` + `model` 唯一：`calls`、`failed`、`given`、`taken`、`updated_at`）；`wt_ais_pools`（`day` + `model` 唯一：`balance`、`given_total`、`taken_total`、`updated_at`）；`wt_pool_events`（`kind`、`provider`、`user_id`、`display_name`、`amount`、`model`、`created_at`）。`model` 列存账本键。第 7 节的 `wt_call_days`、`wt_call_streaks` 与号池无关，记所有成员的调用。
 
 一键取 Cookie：页面提供 `/tools/ais-cookie-helper.zip`（Chrome/Edge 开发者模式加载的小扩展，源码 `wind-tide/tools/ais-cookie-helper/`，改动后用 `wind-tide/tools/pack_cookie_helper.py` 重新打包），备选是商店里的 Cookie-Editor（导出 Header String）和 aistudio-api 的安卓提取器导出的 JSON；AIS 和 BUILD 的捐赠弹窗用同一套步骤和同一个助手。
+
+## 16. WorkBuddy 号池
+
+成员把闲置的腾讯 CodeBuddy（国内）或 WorkBuddy（国际）账号登录进同机部署的 workbuddy2api-panel（下称 WB 面板），账号的额度由全站共享：没有按人头的每日次数，也没有公共池捐取；只要站点开着这个池子，任何成员都能调用 `WB-` 开头的模型，面板自己把每个请求按权重随机分到额度最充裕的账号上，402 / 429 时让那个账号冷却。这一点和 Antigravity 池一样（捐了大家一起用），和 AIS / BUILD（捐号换次数）不同。术语见根目录 `CONTEXT.md`「捐赠」组，部署见 `DEPLOY.md` §13。
+
+开关：`WT_WB_URL` 和 `WT_WB_API_KEY` 都非空才开启，对应第 2 节的 `wt_wb_enabled`；和其他三个池子互不依赖。页面「捐赠账号」多一个标签 WorkBuddy（`tab=workbuddy`），算力池页多一个 WorkBuddy 水箱。
+
+### 16.1 规则
+
+- 两种登录：`realm=cn` 是 CodeBuddy（国内），`realm=global` 是 WorkBuddy（国际）。成员在弹窗第 1 步选，默认 `cn`。
+- 捐赠是「面板向腾讯要链接 → 成员在腾讯自己的页面登录 → 面板自己收下账号」。站点从不接触账号密码或 token，只拿到链接和面板的 `state`：`state` 存在记录的 `cpa_state` 列，核验结束后清空，从不回给浏览器、不进审计、不写日志。
+- 每人最多 10 条（`verifying` + `active`），和其他池子一样各算各的。
+- 同一账号（面板里的 `uid`）不能重复在池：面板收下账号时站点按 `credential_name`=uid 查重，已被别的记录占着 → 这条失败 `This account is already in the pool`（面板那边等于给原账号刷新了一次 token，不删）。
+- 昵称：面板给的 `nickname`，截到 64 个字符存 `nickname` 列，页面拿它当卡片标题（没有就「WorkBuddy account」）。
+- 调用不设闸门：`WtPoolGate` 对 `WB-` 模型直接放行，只记第 7 节的调用计数；配额、分组、倍率全靠渠道和分组本身。
+- 公告：核验成功 `wb_account_donated`，移除 `active` 记录 `wb_account_removed`。
+- 面板每天替账号签到（它配置里的 `checkin_hours`），这是面板的事，站点只在列表里转述 `checked_in`。
+
+### 16.2 渠道由站点建一次，之后归站长
+
+功能开启时每次启动执行 `WtEnsureWbChannel`：按标签 `wt-wb` 找渠道（多个时取 id 最小的）。
+
+- 没有 → 新建：名称 `WorkBuddy`、类型 OpenAI、地址 `WT_WB_URL`、密钥 `WT_WB_API_KEY`、分组 `default,vip,svip`、启用、优先级 0、权重 0。模型列表来自面板 `GET /v1/models`（`cn:<id>` 是国内动态模型，`global:<id>` 是国际模型），每个加前缀 `WB-`：`cn:glm-5.2` → `WB-glm-5.2`，`global:gpt-5.4` → `WB-global-gpt-5.4`；模型映射把 `WB-…` 映回面板的原名。面板里还没有账号时 `/v1/models` 是空的，这时先写代码里的 26 个占位模型（`wtWbSeedModels`），等第一个账号捐进来面板才知道真实列表。
+- 有 → 只修连接（类型、密钥、地址、名称），模型、分组、状态、优先级、权重都归站长，后台改了不会被改回。唯一会动模型的情况：渠道模型仍然等于占位列表、而面板现在列得出模型了，这时换成面板的列表（一次性，日志 `seed list replaced by the panel's models`）。
+- 模型倍率 / 补全倍率只补渠道里缺的 `WB-` 模型（有同名上游模型的照抄，否则 1），从不覆盖已有值。
+- 渠道有改动就刷新渠道缓存，日志 `wt wb: channel WorkBuddy: <做了什么>`。
+
+### 16.3 路由
+
+全部经过 `DisableCache`、`UserAuth`，只接受浏览器会话（`accessTokenSessionRule`）。开始登录复用第 14 节的 `UserCriticalRateLimit("wt-donation")`，测试复用 `wt-donation-test`。
+
+| 方法 | 路径 | 作用 |
+|---|---|---|
+| `POST` | `/api/wt/donations/workbuddy` | 开始一次登录：面板向腾讯要链接，站点建 `verifying` 记录 |
+| `GET` | `/api/wt/donations?provider=workbuddy` | 本人的 WorkBuddy 记录（形状同 14.5，多 `nickname` 和 16.5 的 `pool`） |
+| `GET` | `/api/wt/donations/:id` | 单条状态（弹窗第 2 步每 3 秒轮询；多 `nickname`） |
+| `POST` | `/api/wt/donations/:id/test` | 绕过缓存重读一次面板状态 |
+| `GET` | `/api/wt/donations/:id/usage` | 一律 404 `Usage is not available for this pool` |
+| `POST` | `/api/wt/donations/:id/remove` | 让面板删掉账号（token 文件随之删除）再标记 `removed` |
+| `GET` | `/api/wt/pool` | 多一个 `workbuddy` 字段（16.6） |
+
+WorkBuddy 专属接口在池子关闭时回 `success:false`、消息 `The WorkBuddy pool is not configured`（HTTP 200）；`/api/wt/pool` 只要任一池子开启就可用，WorkBuddy 关着时 `workbuddy` 为 `null`。
+
+### 16.4 开始登录 `POST /api/wt/donations/workbuddy`
+
+请求 `{"realm": "cn", "accepted": true}`（`realm` 可省略，默认 `cn`）。检查顺序：功能开启；请求体最多 4 KB，解析不了 → 400 `Invalid parameters`；`accepted` 必须为真，否则 400 `Accept the risks before donating an account`；`realm` 不是 `cn` / `global` → 400 `Choose the CodeBuddy or the WorkBuddy sign-in`；本人 `verifying` + `active` 的 WorkBuddy 记录已有 10 条 → `You can donate at most 10 accounts`。然后调面板 `POST /panel/api/login/start {"realm"}`：面板回 502（腾讯那边没发出链接）→ 502 `WorkBuddy did not hand out a sign-in link; try again in a moment`；面板不可达、密钥不对（401）、回应读不懂、`state` 超过 128 字符、链接不是 https → 502 `The pool is not answering; try again later`。通过后建记录（`provider=workbuddy`、`status=verifying`、`cpa_state`=state、`credential_name` 为空）并启动核验，响应 202 `{"id": 12, "status": "verifying", "authorization_url": "https://…", "expires_at": 1760000900}`（`expires_at` = 现在 + 15 分钟，面板到时忘掉这次登录），审计 `wt.donation_add` `{"id", "provider": "workbuddy", "realm", "success": true}`（面板拒绝时记 `success: false`，没有 `id`）。
+
+核验任务每 3 秒 `GET /panel/api/login/poll?state=…`，最多 300 次（= 15 分钟）：`{"done": false}` → 继续；`{"done": true, "uid", "nickname", …}` → 查重（见 16.1）后 `active`（记 `credential_name`=uid、`nickname`、`verified_at`，清空 `cpa_state`），发公告 `wb_account_donated`，成员系统日志 `Donated account #{{id}} joined the pool`；面板 404（不认识这个 state：过期了，或面板重启过）→ 失败 `The sign-in was not finished in time; start again`；面板 502（腾讯没响应）或不可达 → 这次算一次尝试，下次再问；300 次用完 → 同样失败。记录写不进去时把面板里刚收下的账号删掉，免得出现站点不认识的账号；失败的登录面板里什么都没留下，不用删。页面上「重新开始」会另起一条记录，旧的那条到 15 分钟后自己失败，成员移除即可。站点启动时（只在主节点）把遗留的 `verifying` 记录按同样规则接着轮询，`cpa_state` 为空的直接失败。
+
+### 16.5 列表里的 WorkBuddy 记录
+
+`pool` 为 `{"state": "available", "message": "Available", "nickname": "Alpha", "realm": "cn", "credits": 300, "credits_total": 500, "retry_at": 0, "success": 40, "failed": 2, "checked_in": true}`，来自面板 `GET /status`（`Authorization: Bearer <WT_WB_API_KEY>`，缓存 15 秒；面板不可达或密钥不对时 `pool` 为 `null`），按顺序取第一个命中：
+
+| 条件 | `state` | `message` |
+|---|---|---|
+| 面板里没有这个 uid | `missing` | `The pool no longer has this account` |
+| `disabled`（token 失效，面板放弃了它） | `disabled` | `The pool can no longer sign in with this account; remove it and donate again` |
+| `paused`（面板管理员手动暂停） | `paused` | `The pool owner paused this account` |
+| `cooling` | `cooldown` | `cool_kind` 为 `hard_credit` 时 `Credits used up for today`，否则 `Rate-limited; the pool is resting this account`；`retry_at` = 现在 + `cool_remaining_sec` |
+| 其余 | `available` | `Available` |
+
+`credits` / `credits_total` 是面板记的剩余额度和总额度，`success` / `failed` 是面板自启动以来的成功数和错误数，`checked_in` 是面板今天是否替它签过到。`email` 永远为空。
+
+测试（`POST /api/wt/donations/:id/test`）是绕过缓存重读一次 `/status`：uid 还在且不 `disabled` 为 `ok`，消息 `The pool can still use this account`，否则 `The pool can no longer use this account`；频率和 `last_test` 的记法同 14.8，`usage` 恒为 `null`。移除是 `POST /panel/api/accounts/{uid}/remove`（200 或 404 算成功；面板不可达 → `The pool is not answering; try again later`，记录保留），然后标记 `removed`，清掉状态缓存；记录原本是 `active` 时发公告 `wb_account_removed`。
+
+### 16.6 `/api/wt/pool` 的 `workbuddy`
+
+```json
+"workbuddy": {"fetched_at": 1760000000, "accounts": 3, "healthy": 2, "cooling": 1, "credits": 400, "credits_total": 1000}
+```
+
+来自同一份缓存的 `/status`：`accounts` 是面板里的账号数，`healthy` 是既不冷却、不暂停、也没失效的个数，`cooling` 是冷却中的个数，`credits` / `credits_total` 是全部账号加起来的剩余和总额；面板不可达时六个字段全为 0（页面显示「号池现在没有响应」）；功能关闭时为 `null`。算力池页的水箱水位 = `credits / credits_total`，没有账号时显示「来捐第一个」。
+
+### 16.7 常量与表
+
+每人最多 10 条；登录链接 15 分钟；核验 3 秒 × 300 次；面板请求 20 秒超时、最多读 1 MB；`/status` 缓存 15 秒；`state` 最长 128 字符，`uid` 最长 64 字符，昵称存 64 个字符，请求体 4 KB；占位模型 26 个，前缀 `WB-`。面板接口：`POST /panel/api/login/start`、`GET /panel/api/login/poll`、`POST /panel/api/accounts/{uid}/remove`、`GET /status`、`GET /v1/models`，全部带 `Authorization: Bearer <WT_WB_API_KEY>`（面板用同一把密钥管面板和中转）。
+
+表：`wt_donations` 复用（`provider` 为 `workbuddy`，`credential_name` 存面板的 uid，`nickname` 存昵称，`cpa_state` 在核验期间暂存登录 state，`auth_index`、`project_id`、`email` 为空）。`wt_donations` 为此多一列 `nickname`（varchar(64)，默认空），其他池子的记录里它恒为空。

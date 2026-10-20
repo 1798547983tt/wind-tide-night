@@ -366,3 +366,88 @@ cp wind-tide/deploy/wt-clean-logs.sh /usr/local/bin/ && chmod 755 /usr/local/bin
 ```
 
 `*/5` 是每月 1、6、11、16、21、26、31 日的 4:30（服务器时区）；每次的输出都追加在 `/var/log/wt-clean-logs.log`。
+
+## 13. 接入 WorkBuddy 号池（可选）
+
+WorkBuddy 标签和算力池页的 WorkBuddy 水箱要连一个同机部署的 workbuddy2api-panel（下称 WB 面板，项目 <https://github.com/linguo2625469/workbuddy2api-panel>）：它保管成员登录进去的腾讯 CodeBuddy / WorkBuddy 账号的 token，每天替它们签到，对外是 OpenAI 兼容接口（`/v1/chat/completions`、`/v1/models`），自带一个管理面板（`/panel/`）。站点只用它的 `/status`、`/v1/models`、`/panel/api/login/*` 和 `/panel/api/accounts/*/remove`，约定见 `API.md` §16。
+
+> 先说清楚：该项目的 README 明确表示不希望它被用于共享号池 / 公益中转，并提醒腾讯可能对这种用法限流、风控甚至封号。本站把这一点写进了捐赠弹窗的风险说明（成员勾选后才能继续），后果由站长和捐赠者自己承担；不想担这个风险就别开这一节。
+
+### 13.1 部署面板本身
+
+放在 `/opt/workbuddy2api`，和站点同一个 Docker 网络（`wind-tide_edge`），不发布任何端口。镜像以非 root 用户（uid 10001）运行，所以 `auths/`、`data/` 和 `config.json` 都要 chown 给它。`compose.yaml` 要点（镜像按 digest 固定，升级时改 digest 再 `docker compose pull && docker compose up -d`，回滚就改回旧 digest）：
+
+```yaml
+services:
+  workbuddy2api:
+    image: ghcr.io/linguo2625469/workbuddy2api-panel:latest@sha256:<digest>
+    container_name: workbuddy2api
+    restart: unless-stopped
+    user: "10001:10001"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - ./auths:/app/auths            # 成员账号的 token 文件（明文），目录 700
+      - ./data:/app/data              # state.json、请求归档
+      - ./config.json:/app/config.json
+    networks: [edge]
+    mem_limit: 384m
+    memswap_limit: 768m
+    cpus: 1.0
+    pids_limit: 256
+    security_opt: ["no-new-privileges:true"]
+    # 镜像自带的 /healthz 在池里没有账号时是 503，所以改探面板页。
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7863/panel/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging: {driver: json-file, options: {max-size: 10m, max-file: "3"}}
+networks:
+  edge:
+    external: true
+    name: wind-tide_edge
+```
+
+1. `openssl rand -hex 32` 生成一把密钥，写进 `config.json` 的 `api_key`（面板登录和中转接口共用这一把），另存一份到 `relay.key`；两个文件都 600，都不要写进任何文档或聊天。
+2. `config.json` 其他要点（完整字段看项目 README）：`listen` 为 `:7863`，`auth_dir` 为 `./auths`，`state_file` 为 `./data/state.json`；`schedule` 里只开签到（`checkin_hours: [9, 21]`）、token 保活（`keepalive_hours: [22]`）和余额刷新（每 5 分钟），成长任务、猫猫旅行、活跃上报、夜猫子默认关掉（它们会替捐赠者做任务、发对话，开不开站长自己决定）；`prompt.mode` 为 `passthrough`（成员的系统提示词原样透传）；`global.enabled` 为 `true`（允许国际版账号）；`pool` 按默认值即可（`max_in_flight: 3`、`credit_floor: 100`，熔断和降级的冷却时间）。
+3. `mkdir -p auths data && chmod 700 auths data && chown -R 10001:10001 auths data config.json`，然后 `docker compose up -d`，等 `docker compose ps` 显示 healthy。此时 `docker exec workbuddy2api wget -qO- http://127.0.0.1:7863/healthz` 还是 503（池里没账号），属正常。
+4. 选号规则是面板自己的，站点改不了：每个请求按权重随机落在额度最充裕的一档账号上，402 / 429 让那个账号冷却，余额低于 `credit_floor` 的靠后；不存在"一直用同一个号"的问题。
+
+### 13.2 面板域名（可选）
+
+同 §10.2，在服务器的 `Caddyfile` 末尾加一个块（先去 DNS 加 `wb` 的 A 记录指向服务器，再加块；记录没生效前 Caddy 申请不到证书）。只放出面板路径，中转接口、`/status` 和健康探针都留在内网：
+
+```caddyfile
+wb.example.com {
+    # 和 ais 块一样的安全响应头
+    @panel path /panel /panel/*
+    handle @panel {
+        reverse_proxy workbuddy2api:7863
+    }
+    handle / {
+        redir /panel/ 302
+    }
+    handle {
+        respond 404
+    }
+}
+```
+
+`docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile </dev/null`。面板用 `config.json` 里的 `api_key` 登录。面板里能看到成员捐进来的账号，**不要在面板里手动移除它们**：要删就在站点页面上移除，否则站点的记录会变成「不在号池里」。不开域名也行，面板就完全不对外。
+
+### 13.3 接到站点
+
+1. `.env` 追加两行（密钥来自 `/opt/workbuddy2api/relay.key`，不要打印）：
+
+   ```
+   WT_WB_URL=http://workbuddy2api:7863
+   WT_WB_API_KEY=<relay.key 的内容>
+   ```
+
+2. 站点的 `compose.yaml` 要把这两个变量传给 `site`（仓库里 `wind-tide/deploy/compose.yaml` 已带；按老版本部署的服务器要照着补两行），`docker compose config | grep -c WT_WB_` 应为 2，再 `docker compose pull site && docker compose up -d site`。
+3. 验证：`curl -s https://<域名>/api/status` 里 `wt_wb_enabled` 为 `true`；站点日志有一行 `wt wb: channel WorkBuddy: channel created`；后台「渠道」里出现标签 `wt-wb` 的渠道 `WorkBuddy`（类型 OpenAI、分组 `default,vip,svip`）；登录后「捐赠账号」页多出 WorkBuddy 标签，算力池页多出 WorkBuddy 水箱。
+4. 模型归站长：渠道刚建好时面板里还没账号，`/v1/models` 是空的，所以站点先写了 26 个占位模型（`WB-glm-5.3`、`WB-deepseek-v4-pro`、`WB-global-gpt-5.5` 这类，见 `API.md` §16.2）。第一个账号捐进来之后，下次站点重启会把**没动过的**占位列表换成面板真正列出的模型；你一旦在后台改过模型列表，站点就不再碰它。要删哪些、加哪些、分组给谁、倍率多少都在后台改，站点只会修连接（地址、密钥、类型、名称）。
+5. 第一次有人捐成功后，用站长账号调一次某个 `WB-` 模型，确认面板那边通；面板的请求归档在 `/opt/workbuddy2api/data`（默认留 7 天、最多 100 MB）。
+6. 回退：删掉这两行，`docker compose up -d site`。标签和水箱隐藏，渠道留着无害；要彻底清理再手动删渠道。

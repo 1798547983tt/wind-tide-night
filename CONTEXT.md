@@ -127,11 +127,11 @@ _Avoid_: 跟随系统
 ## 捐赠
 
 **捐赠账号** (Donated account):
-成员交给站点号池统一调配的账号：Antigravity 账号通过 Google 授权交，AI Studio 账号通过登录 Cookie 交（给 AIS 号池或 BUILD 号池）。
+成员交给站点号池统一调配的账号：Antigravity 账号通过 Google 授权交，AI Studio 账号通过登录 Cookie 交（给 AIS 号池或 BUILD 号池），WorkBuddy 账号在腾讯的页面登录进 WorkBuddy 号池。
 _Avoid_: 捐号、上传账号
 
 **号池** (Account pool):
-站点接入的账号代理持有的全部凭证，站点渠道从里面轮询取号。现在有三个：Antigravity 号池（CLIProxyAPI）、AIS 号池（aistudio-api）和 BUILD 号池（AIStudioToAPI）。
+站点接入的账号代理持有的全部凭证，站点渠道从里面轮询取号。现在有四个：Antigravity 号池（CLIProxyAPI）、AIS 号池（aistudio-api）、BUILD 号池（AIStudioToAPI）和 WorkBuddy 号池（workbuddy2api-panel）。
 _Avoid_: 账号库
 
 **AIS 账号** (AI Studio account):
@@ -141,6 +141,10 @@ _Avoid_: Cookie 号、AIS 号
 **BUILD 账号** (BUILD account):
 成员以登录 Cookie 的形式捐给 BUILD 号池的 Google AI Studio 账号；号池把它存成一个带编号的登录文件（第 n 号位），按编号轮着用，不读邮箱。
 _Avoid_: Build 号、编号账号
+
+**WorkBuddy 账号** (WorkBuddy account):
+成员在腾讯自己的登录页登录进 WorkBuddy 号池的 CodeBuddy（国内）或 WorkBuddy（国际）账号；号池保管它的 token、每天替它签到，按昵称称呼它，不读邮箱。它的额度全站共享，没有按人头的次数。
+_Avoid_: WB 号、腾讯号
 
 **次数** (Calls):
 成员当天在某个号池模型上还能调用的次数，每个模型各记各的。每个在池的 AIS 账号每天给捐赠者 `AIS PG-gemini-4-argon` 50 次、`AIS PG-gemini-3.8-flash` 100 次；每个在池的 BUILD 账号每天给 `Build-gemini-3.8-flash` 100 次。AIS 和 BUILD 分开算，当天没用完不结转。
