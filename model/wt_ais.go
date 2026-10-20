@@ -34,12 +34,18 @@ const (
 
 	WtPoolEventAisDonated         = "ais_account_donated"
 	WtPoolEventAisRemoved         = "ais_account_removed"
+	WtPoolEventAisExpired         = "ais_account_expired"
 	WtPoolEventAisGiven           = "ais_given"
 	WtPoolEventAisTaken           = "ais_taken"
+	WtPoolEventAisWithdrawn       = "ais_withdrawn"
+	WtPoolEventAisReturned        = "ais_returned"
 	WtPoolEventBuildDonated       = "build_account_donated"
 	WtPoolEventBuildRemoved       = "build_account_removed"
+	WtPoolEventBuildExpired       = "build_account_expired"
 	WtPoolEventBuildGiven         = "build_given"
 	WtPoolEventBuildTaken         = "build_taken"
+	WtPoolEventBuildWithdrawn     = "build_withdrawn"
+	WtPoolEventBuildReturned      = "build_returned"
 	WtPoolEventAntigravityDonated = "antigravity_donated"
 	WtPoolEventAntigravityRemoved = "antigravity_removed"
 
@@ -108,6 +114,8 @@ var (
 	ErrWtAisCount          = common.NewMessage("Enter a whole number of calls, 1 or more")
 	ErrWtAisUnknownModel   = common.NewMessage("Unknown AIS PG model")
 	ErrWtBuildUnknownModel = common.NewMessage("Unknown BUILD model")
+	// ErrWtDonationOtherPool refuses a Cookie the other Cookie pool holds.
+	ErrWtDonationOtherPool = common.NewMessage("This account is already in the other Cookie pool; a Google account can be in only one of AIS playground and BUILD")
 )
 
 // NotDonorError refuses a member without an active account of the model's
@@ -140,6 +148,22 @@ func (spec *WtAisModelSpec) takenEvent() string {
 		return WtPoolEventBuildTaken
 	}
 	return WtPoolEventAisTaken
+}
+
+// withdrawnEvent and returnedEvent announce what WtAisSettleAccountLoss
+// moves: gifts taken back out of the pool and taken calls handed back to it.
+func (spec *WtAisModelSpec) withdrawnEvent() string {
+	if spec.Provider == WtBuildProvider {
+		return WtPoolEventBuildWithdrawn
+	}
+	return WtPoolEventAisWithdrawn
+}
+
+func (spec *WtAisModelSpec) returnedEvent() string {
+	if spec.Provider == WtBuildProvider {
+		return WtPoolEventBuildReturned
+	}
+	return WtPoolEventAisReturned
 }
 
 // WtAisTakeLimitError refuses a take beyond the model's daily cap.
@@ -266,12 +290,20 @@ func wtTruncateDisplayName(name string) string {
 	return name
 }
 
-// WtAisFingerprintInPool reports whether a verifying or active donation of
-// the provider already carries the cookie fingerprint.
-func WtAisFingerprintInPool(provider, fingerprint string) (bool, error) {
-	var count int64
-	err := DB.Model(&WtDonation{}).Where("provider = ? AND auth_index = ? AND status IN ?", provider, fingerprint, wtDonationSlotStates).Count(&count).Error
-	return count > 0, err
+// wtCookieProviders are the pools that hold a Google account's Cookie. An
+// account may sit in one of them only: Google rotates the session cookies on
+// use, so two copies of one sign-in drift apart and log each other out.
+var wtCookieProviders = []string{WtAisProvider, WtBuildProvider}
+
+// WtCookieFingerprintPool is the Cookie pool whose verifying or active
+// donation already carries the cookie fingerprint, "" when none does.
+func WtCookieFingerprintPool(fingerprint string) (string, error) {
+	var donation WtDonation
+	err := DB.Select("provider").Where("provider IN ? AND auth_index = ? AND status IN ?", wtCookieProviders, fingerprint, wtDonationSlotStates).Order("id ASC").First(&donation).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	return donation.Provider, err
 }
 
 // CreateWtAisDonation records an imported account of a pool as verifying:
@@ -578,6 +610,70 @@ func WtAisTake(userID int, day, key string, count int, displayName string) (int,
 		return wtInsertPoolEvent(tx, spec.takenEvent(), spec.Provider, userID, displayName, count, spec.Key)
 	})
 	return remaining, balance, takeLeft, err
+}
+
+// WtAisSettleAccountLoss squares the member's day on every model of the pool
+// after one of their accounts left it, removed by them or signed out. Calls
+// the lost account had backed are no longer covered, so what the member gave
+// to the public pool comes back out of it, as far as the pool still holds it
+// (what other members already took stays taken); with no account left, the
+// taken calls the member did not use go back to the pool, since they cannot
+// call any more. Every move is announced with the model; a day where nothing
+// has to move is left alone.
+func WtAisSettleAccountLoss(userID int, provider, day, displayName string) error {
+	for _, spec := range WtAisModelsOf(provider) {
+		err := DB.Transaction(func(tx *gorm.DB) error {
+			var count int64
+			if err := tx.Model(&WtAisLedger{}).Where("user_id = ? AND day = ? AND model = ?", userID, day, spec.Key).Count(&count).Error; err != nil || count == 0 {
+				return err
+			}
+			ledger, err := wtAisLedgerForUpdate(tx, userID, day, spec.Key)
+			if err != nil {
+				return err
+			}
+			accounts, err := wtAisActiveAccounts(tx, userID, spec.Provider)
+			if err != nil {
+				return err
+			}
+			allowance := wtAisAllowanceOf(&spec, accounts, ledger)
+			withdraw := min(max(ledger.Calls-allowance, 0), ledger.Given)
+			returned := 0
+			if accounts == 0 {
+				returned = min(max(allowance-ledger.Calls, 0), ledger.Taken)
+			}
+			if withdraw == 0 && returned == 0 {
+				return nil
+			}
+			pool, err := wtAisPoolForUpdate(tx, day, spec.Key)
+			if err != nil {
+				return err
+			}
+			withdraw = min(withdraw, pool.Balance)
+			if withdraw == 0 && returned == 0 {
+				return nil
+			}
+			now := WtNow().Unix()
+			if err := tx.Model(&WtAisLedger{}).Where("id = ?", ledger.Id).Updates(map[string]any{"given": ledger.Given - withdraw, "taken": ledger.Taken - returned, "updated_at": now}).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&WtAisPool{}).Where("id = ?", pool.Id).Updates(map[string]any{"balance": pool.Balance - withdraw + returned, "given_total": pool.GivenTotal - withdraw, "taken_total": pool.TakenTotal - returned, "updated_at": now}).Error; err != nil {
+				return err
+			}
+			if withdraw > 0 {
+				if err := wtInsertPoolEvent(tx, spec.withdrawnEvent(), spec.Provider, userID, displayName, withdraw, spec.Key); err != nil {
+					return err
+				}
+			}
+			if returned > 0 {
+				return wtInsertPoolEvent(tx, spec.returnedEvent(), spec.Provider, userID, displayName, returned, spec.Key)
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // WtAisPoolBalance is what the model's public pool holds today; 0 before the

@@ -84,12 +84,24 @@ const EVENT_SENTENCES: Record<PoolEventKind, string> = {
   antigravity_removed: '{{name}} removed an Antigravity account',
   ais_account_donated: '{{name}} donated an AI Studio account',
   ais_account_removed: '{{name}} removed an AI Studio account',
+  ais_account_expired:
+    "{{name}}'s AI Studio account signed out and left the pool",
   ais_given: '{{name}} gave {{count}} {{model}} calls to the pool',
   ais_taken: '{{name}} took {{count}} {{model}} calls from the pool',
+  ais_withdrawn:
+    "{{count}} {{model}} calls left the pool with {{name}}'s account",
+  ais_returned:
+    '{{count}} {{model}} calls {{name}} had taken went back to the pool',
   build_account_donated: '{{name}} donated a BUILD account',
   build_account_removed: '{{name}} removed a BUILD account',
+  build_account_expired:
+    "{{name}}'s BUILD account signed out and left the pool",
   build_given: '{{name}} gave {{count}} {{model}} calls to the pool',
   build_taken: '{{name}} took {{count}} {{model}} calls from the pool',
+  build_withdrawn:
+    "{{count}} {{model}} calls left the pool with {{name}}'s account",
+  build_returned:
+    '{{count}} {{model}} calls {{name}} had taken went back to the pool',
   wb_account_donated: '{{name}} donated a WorkBuddy account',
   wb_account_removed: '{{name}} removed a WorkBuddy account',
 }

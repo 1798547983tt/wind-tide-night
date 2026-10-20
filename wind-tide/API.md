@@ -535,7 +535,9 @@ new-api wt emergency-login [--base-url https://your.site]
 - 只有本池 `active` 账号的捐赠者能调用本池的模型、能从本池模型的公共池取次数：AIS 账号只给 `AIS PG-…`，BUILD 账号只给 `Build-…`。
 - 公共池按模型、按天计：成员可以把某个模型今天剩余的次数捐给该模型的公共池（不限量，但不超过自己今天的剩余），也可以从公共池取次数加到自己今天的额度里（每人每天每个模型最多取 100 次，且不超过池内余额）。
 - 计数时机：请求通过分发、进入转发前先在该模型的账本上记 1 次；上游返回非 2xx 时退回这 1 次并记 1 次失败。站长（root）不计数、不受限，方便测试。
-- 公告：有人捐赠或移除账号（三个池子都算）、捐次数、取次数时自动生成一条，显示站内昵称（没有则用户名），捐/取次数的公告带模型名，只保留最新 200 条。
+- 公告：有人捐赠或移除账号（三个池子都算）、账号登录失效被站点退出（15.5）、捐次数、取次数、账号退出时结清次数（下一条）时自动生成一条，显示站内昵称（没有则用户名），带次数的公告带模型名，只保留最新 200 条。
+- 账号退出时结清当天账本（成员移除 `active` 记录，或 15.5 的失效同步把它改成 `failed`；`model.WtAisSettleAccountLoss`，按模型各一个加锁事务）：`deficit = calls − (剩余 active 账号数 × 每账号次数 + taken − given)`，`deficit > 0` 就从该模型的公共池收回 `min(deficit, given, 池内余额)`——`given`、`balance`、`given_total` 同减，别人已经取走的不追；成员已经没有本池 `active` 账号时，再把 `taken − given − calls` 中大于 0 的部分（最多 `taken`）退回公共池——`taken`、`taken_total` 减，`balance` 加。有次数要动才写，各发一条公告：收回是 `ais_withdrawn` / `build_withdrawn`，退回是 `ais_returned` / `build_returned`，都带模型和次数。没动账本的移除只发 `*_account_removed`。
+- 一个 Google 账号只能进一个 Cookie 号池：同一份 Cookie（按指纹）在 AIS 或 BUILD 里已有 `verifying`/`active` 记录，另一个池子拒收（15.4）。原因：Google 会在使用中轮换会话 Cookie（`__Secure-1PSIDTS`），两份拷贝各自轮换后互相顶掉登录，几小时内都失效；捐赠者自己继续用那个账号也是同一个效果，所以页面要求在专用的浏览器配置里导出、导出后关掉不再碰。
 - AIS 只导入 Cookie 里浏览器的第一个账号（u/0）；BUILD 把 Cookie 整个交给受控浏览器，哪个账号在前就用哪个。页面的风险说明写明这一点，并说明 Cookie 等于交出该 Google 账号的完整登录。
 
 ### 15.2 渠道、分组与倍率由站点维护
@@ -572,13 +574,13 @@ AIS 专属接口（提交 Cookie 给 AIS、捐/取 AIS 模型的次数，以及�
 
 ### 15.4 提交 Cookie `POST /api/wt/donations/aistudio`
 
-请求 `{"cookies": "…", "accepted": true}`。检查顺序：功能开启；请求体最多 192 KB（给 64 KB Cookie 的 JSON 转义留余量），解析不了 → 400 `Invalid parameters`；`accepted` 必须为真，否则 400 `Accept the risks before donating an account`；`cookies` 最长 64 KB，超长按没有登录 Cookie 处理（400）；如果文本是 JSON 且带 `accounts` 数组（aistudio-api 安卓提取器导出的包），只取第一个账号的 `cookies`；接受 `k=v; k2=v2` 的请求头格式和 `[{"name","value"}]` 的 JSON 数组；必须含 `__Secure-1PSID`、`SID`、`SAPISID`、`__Secure-1PAPISID` 之一，否则 `Paste the Cookie of a signed-in AI Studio page`；按指纹（这四个里第一个存在的值的 SHA-256，取前 32 位十六进制，存在 `auth_index`）在**本池**查重，已有 `verifying`/`active` 记录 → `This account is already in the pool`；每人每池最多 10 条。然后调号池的 `POST /accounts/import-cookies`（`auth_user` 固定 `0`，账号名 `wt-<成员 id>-<4 位随机十六进制>`，方便站长在 AIS 控制台认出来源）：号池解析不出 Cookie → 同上的 Cookie 提示；号池不可达或 5xx → 502 `The pool is not answering; try again later`。通过后建记录（`provider=aistudio`、`credential_name`=号池账号 id、`status=verifying`、邮箱为空）并启动核验，响应 202 `{"id": 12, "status": "verifying"}`，审计 `wt.donation_add`。Cookie 文本不落库、不写日志、不回显。
+请求 `{"cookies": "…", "accepted": true}`。检查顺序：功能开启；请求体最多 192 KB（给 64 KB Cookie 的 JSON 转义留余量），解析不了 → 400 `Invalid parameters`；`accepted` 必须为真，否则 400 `Accept the risks before donating an account`；`cookies` 最长 64 KB，超长按没有登录 Cookie 处理（400）；如果文本是 JSON 且带 `accounts` 数组（aistudio-api 安卓提取器导出的包），只取第一个账号的 `cookies`；接受 `k=v; k2=v2` 的请求头格式和 `[{"name","value"}]` 的 JSON 数组；必须含 `__Secure-1PSID`、`SID`、`SAPISID`、`__Secure-1PAPISID` 之一，否则 `Paste the Cookie of a signed-in AI Studio page`；按指纹（这四个里第一个存在的值的 SHA-256，取前 32 位十六进制，存在 `auth_index`）在**两个 Cookie 号池**查重：本池已有 `verifying`/`active` 记录 → `This account is already in the pool`，另一个池子已有 → `This account is already in the other Cookie pool; a Google account can be in only one of AIS playground and BUILD`（原因见 15.1；`failed`/`removed` 的记录不占指纹）；每人每池最多 10 条。然后调号池的 `POST /accounts/import-cookies`（`auth_user` 固定 `0`，账号名 `wt-<成员 id>-<4 位随机十六进制>`，方便站长在 AIS 控制台认出来源）：号池解析不出 Cookie → 同上的 Cookie 提示；号池不可达或 5xx → 502 `The pool is not answering; try again later`。通过后建记录（`provider=aistudio`、`credential_name`=号池账号 id、`status=verifying`、邮箱为空）并启动核验，响应 202 `{"id": 12, "status": "verifying"}`，审计 `wt.donation_add`。Cookie 文本不落库、不写日志、不回显。
 
 核验任务每 10 秒调一次号池的 `POST /accounts/{id}/detect-email`，最多 12 次：拿到邮箱 → 规范化后查重（站内其他 `verifying`/`active` 的 AIS 记录同邮箱 → 失败 `This account is already in the pool`），通过则 `active`（记 `email`、`verified_at`）并发公告 `ais_account_donated`；邮箱为空或号池回 503（受控浏览器没就绪）→ 下次再试；404 → 失败 `The pool lost the account; donate again`；12 次用完 → 失败 `The pool could not read the account in time; try again later`。任何失败都会顺手删掉号池里的那个账号（删不掉也不报错）。站点启动时把遗留的 `verifying` AIS 记录按同样规则收尾。
 
 ### 15.4.1 提交 Cookie `POST /api/wt/donations/build`
 
-请求和前置检查与 15.4 完全相同（同一段代码：192 KB / `accepted` / 64 KB / 提取器 JSON / 两种格式 / 四个登录 Cookie 之一 / 本池指纹查重 / 每人每池 10 条）。之后站点把 Cookie 变成 BUILD 控制台能加载的浏览器 storage state：每个 `k=v` 变成一条 `.google.com`、路径 `/`、`secure`、`SameSite=None` 的 Cookie，`SAPISID`、`APISID`、`__Secure-1PAPISID`、`__Secure-3PAPISID` 之外的都标 `httpOnly`，过期时间写 180 天后（真正的有效期由 Google 决定），`__Host-` 开头的丢弃（跨不了域，登录也用不到）；一条都不剩 → 400 `Paste the Cookie of a signed-in AI Studio page`。文件里的 `accountName` 是 `wt-<成员 id>-<4 位随机十六进制>`，从不写邮箱，控制台不会把两个成员的文件并成一个。
+请求和前置检查与 15.4 完全相同（同一段代码：192 KB / `accepted` / 64 KB / 提取器 JSON / 两种格式 / 四个登录 Cookie 之一 / 两池指纹查重 / 每人每池 10 条）。之后站点把 Cookie 变成 BUILD 控制台能加载的浏览器 storage state：每个 `k=v` 变成一条 `.google.com`、路径 `/`、`secure`、`SameSite=None` 的 Cookie，`SAPISID`、`APISID`、`__Secure-1PAPISID`、`__Secure-3PAPISID` 之外的都标 `httpOnly`，过期时间写 180 天后（真正的有效期由 Google 决定），`__Host-` 开头的丢弃（跨不了域，登录也用不到）；一条都不剩 → 400 `Paste the Cookie of a signed-in AI Studio page`。文件里的 `accountName` 是 `wt-<成员 id>-<4 位随机十六进制>`，从不写邮箱，控制台不会把两个成员的文件并成一个。
 
 上传：控制台 `POST /api/files`，请求 `{"content": <storage state>}`，200 回 `{"filename": "auth-7.json"}`，编号 7 就是这条记录的 `credential_name`；控制台正在切换账号（409）→ 503 `The pool is busy switching accounts; try again in a moment`；其他失败 → 502 `The pool is not answering; try again later`。建记录（`provider=build`、`credential_name`=编号、`status=verifying`、邮箱永远为空）失败时顺手把文件删掉。响应和审计同 15.4。
 
@@ -609,7 +611,9 @@ AIS 专属接口（提交 Cookie 给 AIS、捐/取 AIS 模型的次数，以及�
 | `isExpired` 为真 | `expired` | `The pool can no longer sign in with this account; remove it and donate again` |
 | 其余 | `available` | `Available`（`current` 表示控制台此刻正用它服务，`has_context` 表示浏览器为它开着上下文） |
 
-测试（`POST /api/wt/donations/:id/test`）对 AIS 记录就是一次 `detect-email`：读到邮箱为 `ok`，消息 `The pool can still use this account`，否则 `The pool can no longer sign in with this account`；对 BUILD 记录是重读一次控制台状态：编号还在且既不 `isExpired` 也不 `isInvalid` 为 `ok`，消息同上；1 次/分钟、20 次/天和 `last_test` 的记法同 14.8，`usage` 恒为 `null`。移除对 AIS 记录是 `DELETE /accounts/{id}`（200 或 404 算成功），对 BUILD 记录是 `DELETE /api/accounts/{index}?force=true`（200 或 404 算成功，409 → `The pool is busy switching accounts; try again in a moment`，成员稍后再点），然后标记 `removed`；记录原本是 `active` 时才发公告 `ais_account_removed` / `build_account_removed`（移除一条 `verifying`/`failed` 的记录不发）。Antigravity 记录核验成功时发 `antigravity_donated`，移除 `active` 记录时发 `antigravity_removed`。
+测试（`POST /api/wt/donations/:id/test`）对 AIS 记录就是一次 `detect-email`：读到邮箱为 `ok`，消息 `The pool can still use this account`，否则 `The pool can no longer sign in with this account`；对 BUILD 记录是重读一次控制台状态：编号还在且既不 `isExpired` 也不 `isInvalid` 为 `ok`，消息同上；1 次/分钟、20 次/天和 `last_test` 的记法同 14.8，`usage` 恒为 `null`。移除对 AIS 记录是 `DELETE /accounts/{id}`（200 或 404 算成功），对 BUILD 记录是 `DELETE /api/accounts/{index}?force=true`（200 或 404 算成功，409 → `The pool is busy switching accounts; try again in a moment`，成员稍后再点），然后标记 `removed`；记录原本是 `active` 时才发公告 `ais_account_removed` / `build_account_removed`（移除一条 `verifying`/`failed` 的记录不发），并按 15.1 的规则结清成员当天的账本（有次数要动时再发 `*_withdrawn` / `*_returned`）。Antigravity 记录核验成功时发 `antigravity_donated`，移除 `active` 记录时发 `antigravity_removed`。
+
+失效同步：主节点每 60 秒跑一遍（`service.WtSyncCookiePools`，启动后第一次在 60 秒后；任一 Cookie 号池开着就跑）。读 AIS 的轮转表和 BUILD 的状态（都走 15 秒缓存），对每条 `active` 记录：AIS `session_expired` 为真、BUILD `isExpired` 或 `isInvalid` 为真 → 先删号池里的账号（AIS `DELETE /accounts/{id}`，BUILD `DELETE /api/accounts/{index}?force=true`；删不掉、控制台忙就下一轮再试），再把记录改成 `failed`，`fail_reason` 为 `The pool could not sign in with this account; export the Cookie again and donate it afresh`（和 BUILD 核验失败同一句；`isInvalid` 时为 `The pool could not read this account; export the Cookie again and donate it afresh`），发公告 `ais_account_expired` / `build_account_expired`，按 15.1 的规则结清成员当天的账本，并给成员记一条系统日志 `Donated account #{{id}} signed out and left the pool; export its Cookie again to donate it afresh`。号池里查无此账号（`missing`）不自动处理，列表照常显示、由成员自己移除；号池不可达时这一轮跳过；同步和成员的移除撞上时，谁先把状态改掉谁结账，另一方不再动。成员在列表里看到的是 `failed` + 原因 + 「Retry」（重新导出一份 Cookie 再捐）。
 
 ### 15.6 算力池 `GET /api/wt/pool`
 
@@ -635,7 +639,7 @@ AIS 专属接口（提交 Cookie 给 AIS、捐/取 AIS 模型的次数，以及�
 
 ### 15.8 公告
 
-`GET /api/wt/pool/events?after=88` → `{"items": […]}`，只给 id 大于 `after` 的，最新在前，最多 50 条；`kind` 取值 `antigravity_donated`、`antigravity_removed`、`ais_account_donated`、`ais_account_removed`、`ais_given`、`ais_taken`、`build_account_donated`、`build_account_removed`、`build_given`、`build_taken`、`wb_account_donated`、`wb_account_removed`（第 16 节），`amount` 和 `model` 只有捐/取次数时非空。页面把它们读成句子，并在有新公告时让潮池涨落一下。
+`GET /api/wt/pool/events?after=88` → `{"items": […]}`，只给 id 大于 `after` 的，最新在前，最多 50 条；`kind` 取值 `antigravity_donated`、`antigravity_removed`、`ais_account_donated`、`ais_account_removed`、`ais_account_expired`、`ais_given`、`ais_taken`、`ais_withdrawn`、`ais_returned`、`build_account_donated`、`build_account_removed`、`build_account_expired`、`build_given`、`build_taken`、`build_withdrawn`、`build_returned`、`wb_account_donated`、`wb_account_removed`（第 16 节），`amount` 和 `model` 只有带次数的公告（捐、取、收回、退回）非空。页面把它们读成句子，并在有新公告时让潮池涨落一下。
 
 ### 15.9 调用闸门
 
@@ -643,7 +647,7 @@ AIS 专属接口（提交 Cookie 给 AIS、捐/取 AIS 模型的次数，以及�
 
 ### 15.10 常量与表
 
-每人每池最多 10 条记录；每账号每天的次数和每天最多取的次数见 15.1 的模型表；公告保留 200 条；Cookie 最长 64 KB（请求体 192 KB）。AIS：号池请求 15 秒超时、最多读 1 MB；`/rotation/accounts` 缓存 15 秒；核验 10 秒 × 12 次；管理接口没有 `/api` 前缀（`/accounts/import-cookies`、`/accounts/{id}/detect-email`、`/accounts/{id}`、`/rotation/accounts`），鉴权是 `Authorization: Bearer <WT_AIS_PASSWORD>`。BUILD：控制台请求 20 秒超时、最多读 1 MB、不跟随跳转；`/api/status` 缓存 15 秒；核验 10 秒 × 12 次，第 5 次时切换；登录文件里的过期时间 180 天；接口是 `POST /login`、`GET /api/status`、`POST /api/files`、`PUT /api/accounts/current`、`DELETE /api/accounts/{index}?force=true`，鉴权是登录换来的会话 Cookie。
+每人每池最多 10 条记录；每账号每天的次数和每天最多取的次数见 15.1 的模型表；公告保留 200 条；Cookie 最长 64 KB（请求体 192 KB）；失效同步每 60 秒一轮（15.5）。AIS：号池请求 15 秒超时、最多读 1 MB；`/rotation/accounts` 缓存 15 秒；核验 10 秒 × 12 次；管理接口没有 `/api` 前缀（`/accounts/import-cookies`、`/accounts/{id}/detect-email`、`/accounts/{id}`、`/rotation/accounts`），鉴权是 `Authorization: Bearer <WT_AIS_PASSWORD>`。BUILD：控制台请求 20 秒超时、最多读 1 MB、不跟随跳转；`/api/status` 缓存 15 秒；核验 10 秒 × 12 次，第 5 次时切换；登录文件里的过期时间 180 天；接口是 `POST /login`、`GET /api/status`、`POST /api/files`、`PUT /api/accounts/current`、`DELETE /api/accounts/{index}?force=true`，鉴权是登录换来的会话 Cookie。
 
 表：`wt_donations` 复用（AIS：`provider` 为 `aistudio`，`credential_name` 存号池账号 id；BUILD：`provider` 为 `build`，`credential_name` 存控制台里的文件编号；两者 `auth_index` 都存 Cookie 指纹，`project_id` 为空）；`wt_ais_ledgers`（`user_id` + `day` + `model` 唯一：`calls`、`failed`、`given`、`taken`、`updated_at`）；`wt_ais_pools`（`day` + `model` 唯一：`balance`、`given_total`、`taken_total`、`updated_at`）；`wt_pool_events`（`kind`、`provider`、`user_id`、`display_name`、`amount`、`model`、`created_at`）。`model` 列存账本键。第 7 节的 `wt_call_days`、`wt_call_streaks` 与号池无关，记所有成员的调用。
 

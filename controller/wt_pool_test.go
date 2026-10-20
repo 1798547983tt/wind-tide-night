@@ -1289,3 +1289,268 @@ func TestWtPoolLevelSnapshot(t *testing.T) {
 		assert.Equal(t, 4, wtReadPool(t, session).Antigravity.Accounts, "an unreachable pool keeps the last snapshot")
 	})
 }
+
+// One Google account sits in one Cookie pool only: a Cookie the AIS
+// playground holds is refused by BUILD and the other way round, before
+// either pool is asked; a removed donation frees the account again.
+func TestWtCookiePoolsHoldAnAccountOnce(t *testing.T) {
+	forEachWtDatabase(t, func(t *testing.T) {
+		pinWtClock(t, wtDonationClock)
+		ais := newWtFakeAis(t)
+		build := newWtFakeBuild(t)
+		t.Setenv("WT_CPA_URL", "")
+		t.Setenv("WT_CPA_MANAGEMENT_KEY", "")
+		member := createWtUser(t, model.User{Username: "donor"})
+		session := wtSession(t, member.Id)
+		const otherPool = "This account is already in the other Cookie pool; a Google account can be in only one of AIS playground and BUILD"
+		var accepted struct {
+			ID int `json:"id"`
+		}
+
+		code, response := wtAisDonate(t, session, "__Secure-1PSID=shared-1")
+		require.Equal(t, http.StatusAccepted, code, response.Message)
+		require.NoError(t, common.Unmarshal(response.Data, &accepted))
+		inAis := accepted.ID
+		code, response = wtBuildDonate(t, session, "__Secure-1PSID=shared-1; SID=another-copy")
+		assert.Equal(t, http.StatusOK, code)
+		assert.Equal(t, otherPool, response.Message)
+		assert.Zero(t, build.requestsOf("POST /api/files"), "the console was not asked")
+		_, response = wtAisDonate(t, session, "__Secure-1PSID=shared-1")
+		assert.Equal(t, "This account is already in the pool", response.Message, "the same pool still says so")
+
+		code, response = wtBuildDonate(t, session, "__Secure-1PSID=shared-2")
+		require.Equal(t, http.StatusAccepted, code, response.Message)
+		code, response = wtAisDonate(t, session, "__Secure-1PSID=shared-2")
+		assert.Equal(t, http.StatusOK, code)
+		assert.Equal(t, otherPool, response.Message)
+		assert.Equal(t, 1, ais.requestsOf("POST /accounts/import-cookies"), "the pool was not asked")
+
+		// Removing the AIS donation frees the account for BUILD.
+		_, response = wtAisCall(t, session, WtRemoveDonation, http.MethodPost, "/api/wt/donations/0/remove", "", wtIDParam(inAis))
+		require.True(t, response.Success, response.Message)
+		code, response = wtBuildDonate(t, session, "__Secure-1PSID=shared-1")
+		require.Equal(t, http.StatusAccepted, code, response.Message)
+	})
+}
+
+// Losing an account squares the day's ledger: calls the lost account had
+// backed come back out of the public pool as far as it still holds them, a
+// member whose last account left gets their unused taken calls returned,
+// and every move is announced with the model.
+func TestWtAisAccountLossSettlesTheLedger(t *testing.T) {
+	forEachWtDatabase(t, func(t *testing.T) {
+		pinWtClock(t, wtDonationClock)
+		fake := newWtFakeAis(t)
+		t.Setenv("WT_CPA_URL", "")
+		t.Setenv("WT_CPA_MANAGEMENT_KEY", "")
+		alice := createWtUser(t, model.User{Username: "alice", DisplayName: "Alice"})
+		bob := createWtUser(t, model.User{Username: "bob"})
+		fake.hold("acc-a1")
+		fake.hold("acc-a2")
+		first := wtAisDonation(t, alice.Id, "acc-a1", "a1@example.com", 100)
+		second := wtAisDonation(t, alice.Id, "acc-a2", "a2@example.com", 200)
+		wtAisDonation(t, bob.Id, "acc-b", "b@example.com", 300)
+		sessions := map[int]service.AuthIdentity{alice.Id: wtSession(t, alice.Id), bob.Id: wtSession(t, bob.Id)}
+		day := model.WtCheckinDay(wtDonationClock)
+		give := func(userID int, upstream string, count int) {
+			_, response := wtAisCall(t, sessions[userID], WtGiveAisCalls, http.MethodPost, "/api/wt/pool/ais/give", wtAisMoveBody(upstream, count))
+			require.True(t, response.Success, response.Message)
+		}
+		take := func(userID int, upstream string, count int) {
+			_, response := wtAisCall(t, sessions[userID], WtTakeAisCalls, http.MethodPost, "/api/wt/pool/ais/take", wtAisMoveBody(upstream, count))
+			require.True(t, response.Success, response.Message)
+		}
+		calls := func(userID int, upstream string, count int) {
+			for range count {
+				_, err := model.WtAisReserveCall(userID, day, upstream)
+				require.NoError(t, err)
+			}
+		}
+		remove := func(id int) {
+			_, response := wtAisCall(t, sessions[alice.Id], WtRemoveDonation, http.MethodPost, "/api/wt/donations/0/remove", "", wtIDParam(id))
+			require.True(t, response.Success, response.Message)
+		}
+		// Alice's two accounts allow 100 argon calls: she gives 60, Bob takes
+		// 25 of them and she makes 30 calls. On flash Bob gives 50, Alice
+		// takes 40 and makes 10 calls.
+		give(alice.Id, wtAisArgon, 60)
+		take(bob.Id, wtAisArgon, 25)
+		calls(alice.Id, wtAisArgon, 30)
+		give(bob.Id, wtAisFlash, 50)
+		take(alice.Id, wtAisFlash, 40)
+		calls(alice.Id, wtAisFlash, 10)
+
+		// One account left allows 50 − 60 given = −10 argon calls against 30
+		// made: 40 are uncovered, and the 35 of Alice's gift still in the pool
+		// come back. Flash is covered (100 + 40 taken against 10 calls).
+		remove(second.Id)
+		pool := wtReadPool(t, sessions[alice.Id])
+		assert.Equal(t, 1, pool.Aistudio.Accounts)
+		assert.Equal(t, model.WtAisModelBalance{Provider: model.WtAisProvider, Model: wtAisArgon, RelayModel: wtAisArgonRelay, PerAccount: 50, TakeMax: 100, Allowance: 25, Calls: 30, Given: 25, Remaining: 0, TakeLeft: 100, PoolBalance: 0, PoolGiven: 25, PoolTaken: 25}, wtAisModelOf(t, pool.Aistudio, wtAisArgon))
+		assert.Equal(t, model.WtAisModelBalance{Provider: model.WtAisProvider, Model: wtAisFlash, RelayModel: wtAisFlashRelay, PerAccount: 100, TakeMax: 100, Allowance: 140, Calls: 10, Taken: 40, Remaining: 130, TakeLeft: 60, PoolBalance: 10, PoolGiven: 50, PoolTaken: 40}, wtAisModelOf(t, pool.Aistudio, wtAisFlash))
+		events := wtPoolEvents(t)
+		require.Len(t, events, 6)
+		assert.Equal(t, model.WtPoolEventAisWithdrawn, events[0].Kind)
+		assert.Equal(t, model.WtAisProvider, events[0].Provider)
+		assert.Equal(t, "Alice", events[0].DisplayName)
+		assert.Equal(t, 35, events[0].Amount)
+		assert.Equal(t, wtAisArgon, events[0].Model)
+		assert.Equal(t, model.WtPoolEventAisRemoved, events[1].Kind)
+
+		// Bob's day is untouched: what he took stays his.
+		pool = wtReadPool(t, sessions[bob.Id])
+		assert.Equal(t, 25, wtAisModelOf(t, pool.Aistudio, wtAisArgon).Taken)
+		assert.Equal(t, 75, wtAisModelOf(t, pool.Aistudio, wtAisArgon).Remaining)
+		assert.Equal(t, 50, wtAisModelOf(t, pool.Aistudio, wtAisFlash).Given)
+
+		// With no account left nothing more of the argon gift can come back
+		// (the pool holds none of it), and the 30 flash calls Alice took but
+		// did not use go back to the pool.
+		remove(first.Id)
+		pool = wtReadPool(t, sessions[alice.Id])
+		assert.Equal(t, 0, pool.Aistudio.Accounts)
+		argon := wtAisModelOf(t, pool.Aistudio, wtAisArgon)
+		assert.Equal(t, 25, argon.Given)
+		assert.Equal(t, 0, argon.PoolBalance)
+		assert.Equal(t, -25, argon.Allowance)
+		assert.Equal(t, 0, argon.Remaining)
+		assert.Equal(t, model.WtAisModelBalance{Provider: model.WtAisProvider, Model: wtAisFlash, RelayModel: wtAisFlashRelay, PerAccount: 100, TakeMax: 100, Allowance: 10, Calls: 10, Taken: 10, Remaining: 0, TakeLeft: 90, PoolBalance: 40, PoolGiven: 50, PoolTaken: 10}, wtAisModelOf(t, pool.Aistudio, wtAisFlash))
+		events = wtPoolEvents(t)
+		require.Len(t, events, 8)
+		assert.Equal(t, model.WtPoolEventAisReturned, events[0].Kind)
+		assert.Equal(t, 30, events[0].Amount)
+		assert.Equal(t, wtAisFlash, events[0].Model)
+		assert.Equal(t, model.WtPoolEventAisRemoved, events[1].Kind)
+		_, err := model.WtAisReserveCall(alice.Id, day, wtAisFlash)
+		assert.ErrorIs(t, err, model.ErrWtAisNotDonor)
+	})
+}
+
+// The minute pass takes the accounts the pools flagged as signed out (AIS
+// playground: session_expired; BUILD: isExpired or isInvalid) out of the
+// pools, fails their donations with the reason to donate afresh, squares the
+// ledger and announces it. Everything else is left alone, a second pass has
+// nothing to do, and a busy console or a silent pool waits for the next one.
+func TestWtPoolSyncRetiresSignedOutAccounts(t *testing.T) {
+	forEachWtDatabase(t, func(t *testing.T) {
+		pinWtClock(t, wtDonationClock)
+		ais := newWtFakeAis(t)
+		build := newWtFakeBuild(t)
+		t.Setenv("WT_CPA_URL", "")
+		t.Setenv("WT_CPA_MANAGEMENT_KEY", "")
+		alice := createWtUser(t, model.User{Username: "alice", DisplayName: "Alice"})
+		bob := createWtUser(t, model.User{Username: "bob"})
+		ais.hold("acc-dead")
+		ais.hold("acc-fine")
+		ais.mu.Lock()
+		ais.rotation["acc-dead"] = map[string]any{"account_id": "acc-dead", "session_expired": true, "errors": 4}
+		ais.rotation["acc-fine"] = map[string]any{"account_id": "acc-fine", "errors": 4, "auth_cooldown": float64(wtDonationClock.Unix() + 300)}
+		ais.mu.Unlock()
+		dead := wtAisDonation(t, alice.Id, "acc-dead", "dead@example.com", 100)
+		fine := wtAisDonation(t, alice.Id, "acc-fine", "fine@example.com", 200)
+		build.hold(1, wtFakeBuildAccount{name: "wt-2-aaaa", expired: true})
+		build.hold(2, wtFakeBuildAccount{name: "wt-2-bbbb", invalid: true})
+		build.hold(3, wtFakeBuildAccount{name: "wt-2-cccc", hasContext: true})
+		expired := wtBuildDonation(t, bob.Id, 1, 300)
+		unreadable := wtBuildDonation(t, bob.Id, 2, 400)
+		healthy := wtBuildDonation(t, bob.Id, 3, 500)
+		gone := wtBuildDonation(t, bob.Id, 9, 600)
+		sessions := map[int]service.AuthIdentity{alice.Id: wtSession(t, alice.Id), bob.Id: wtSession(t, bob.Id)}
+		day := model.WtCheckinDay(wtDonationClock)
+		// Alice gave 80 of her 100 argon calls; Bob gave 150 of his 400 BUILD
+		// calls and made 120.
+		_, response := wtAisCall(t, sessions[alice.Id], WtGiveAisCalls, http.MethodPost, "/api/wt/pool/ais/give", wtAisMoveBody(wtAisArgon, 80))
+		require.True(t, response.Success, response.Message)
+		_, response = wtAisCall(t, sessions[bob.Id], WtGiveAisCalls, http.MethodPost, "/api/wt/pool/ais/give", wtAisMoveBody(wtBuildFlashRelay, 150))
+		require.True(t, response.Success, response.Message)
+		for range 120 {
+			_, err := model.WtAisReserveCall(bob.Id, day, wtBuildFlashRelay)
+			require.NoError(t, err)
+		}
+
+		service.WtSyncCookiePools(context.Background())
+
+		const signedOut = "The pool could not sign in with this account; export the Cookie again and donate it afresh"
+		row := wtDonationRow(t, dead.Id)
+		assert.Equal(t, model.WtDonationFailed, row.Status)
+		assert.Equal(t, signedOut, row.FailReason)
+		assert.Equal(t, model.WtDonationActive, wtDonationRow(t, fine.Id).Status, "a sign-in cooldown is not an expiry")
+		ais.mu.Lock()
+		assert.Equal(t, []string{"acc-dead"}, ais.deleted)
+		ais.mu.Unlock()
+		row = wtDonationRow(t, expired.Id)
+		assert.Equal(t, model.WtDonationFailed, row.Status)
+		assert.Equal(t, signedOut, row.FailReason)
+		row = wtDonationRow(t, unreadable.Id)
+		assert.Equal(t, model.WtDonationFailed, row.Status)
+		assert.Equal(t, "The pool could not read this account; export the Cookie again and donate it afresh", row.FailReason)
+		assert.Equal(t, model.WtDonationActive, wtDonationRow(t, healthy.Id).Status)
+		assert.Equal(t, model.WtDonationActive, wtDonationRow(t, gone.Id).Status, "a file the console does not list is left to the member")
+		assert.Equal(t, []int{1, 2}, build.deletedSeen())
+
+		// Alice's one account left allows 50 − 80 = −30 calls: 30 of her gift
+		// come back. Bob's two accounts left allow 200 − 150 = 50 against 120
+		// calls: 70 of his gift come back.
+		pool := wtReadPool(t, sessions[alice.Id])
+		argon := wtAisModelOf(t, pool.Aistudio, wtAisArgon)
+		assert.Equal(t, 50, argon.Given)
+		assert.Equal(t, 50, argon.PoolBalance)
+		assert.Equal(t, 0, argon.Allowance)
+		pool = wtReadPool(t, sessions[bob.Id])
+		require.NotNil(t, pool.Build)
+		assert.Equal(t, 2, pool.Build.Accounts)
+		flash := wtAisModelOf(t, pool.Build, wtBuildFlashRelay)
+		assert.Equal(t, 80, flash.Given)
+		assert.Equal(t, 80, flash.PoolBalance)
+		assert.Equal(t, 120, flash.Allowance)
+		assert.Equal(t, 120, flash.Calls)
+		events := wtPoolEvents(t)
+		require.Len(t, events, 7)
+		for i, want := range []struct {
+			kind, name, model string
+			amount            int
+		}{
+			{model.WtPoolEventBuildWithdrawn, "bob", wtBuildFlashRelay, 70},
+			{model.WtPoolEventBuildExpired, "bob", "", 1},
+			{model.WtPoolEventBuildExpired, "bob", "", 1},
+			{model.WtPoolEventAisWithdrawn, "Alice", wtAisArgon, 30},
+			{model.WtPoolEventAisExpired, "Alice", "", 1},
+			{model.WtPoolEventBuildGiven, "bob", wtBuildFlashRelay, 150},
+			{model.WtPoolEventAisGiven, "Alice", wtAisArgon, 80},
+		} {
+			assert.Equal(t, want.kind, events[i].Kind, i)
+			assert.Equal(t, want.name, events[i].DisplayName, i)
+			assert.Equal(t, want.model, events[i].Model, i)
+			assert.Equal(t, want.amount, events[i].Amount, i)
+		}
+
+		// A second pass has nothing to do.
+		service.WtSyncCookiePools(context.Background())
+		assert.Len(t, wtPoolEvents(t), 7)
+		assert.Equal(t, []int{1, 2}, build.deletedSeen())
+
+		// A console busy switching keeps the donation for the next pass, and
+		// a pool that does not answer is skipped; both are caught up later.
+		build.hold(4, wtFakeBuildAccount{name: "wt-2-dddd", expired: true})
+		later := wtBuildDonation(t, bob.Id, 4, 700)
+		build.set(func(fake *wtFakeBuild) { fake.busy = true })
+		ais.mu.Lock()
+		ais.rotation["acc-fine"]["session_expired"] = true
+		ais.down = true
+		ais.mu.Unlock()
+		service.WtResetDonationCaches()
+		service.WtSyncCookiePools(context.Background())
+		assert.Equal(t, model.WtDonationActive, wtDonationRow(t, later.Id).Status)
+		assert.Equal(t, model.WtDonationActive, wtDonationRow(t, fine.Id).Status)
+		build.set(func(fake *wtFakeBuild) { fake.busy = false })
+		ais.mu.Lock()
+		ais.down = false
+		ais.mu.Unlock()
+		service.WtResetDonationCaches()
+		service.WtSyncCookiePools(context.Background())
+		assert.Equal(t, model.WtDonationFailed, wtDonationRow(t, later.Id).Status)
+		assert.Equal(t, model.WtDonationFailed, wtDonationRow(t, fine.Id).Status)
+		assert.Equal(t, []int{1, 2, 4, 4}, build.deletedSeen(), "the busy refusal was one attempt")
+		assert.Equal(t, 0, wtAisModelOf(t, wtReadPool(t, sessions[alice.Id]).Aistudio, wtAisArgon).Given, "with no account left the rest of the gift came back")
+	})
+}

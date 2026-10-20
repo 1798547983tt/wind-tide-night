@@ -7768,6 +7768,16 @@
     "The sign-in was not finished in time; start again": "The sign-in was not finished in time; start again",
     "The pool owner paused this account": "The pool owner paused this account",
     "Rate-limited; the pool is resting this account": "Rate-limited; the pool is resting this account",
-    "Credits used up for today": "Credits used up for today"
+    "Credits used up for today": "Credits used up for today",
+    "This account is already in the other Cookie pool; a Google account can be in only one of AIS playground and BUILD": "This account is already in the other Cookie pool; a Google account can be in only one of AIS playground and BUILD",
+    "The pool could not read this account; export the Cookie again and donate it afresh": "The pool could not read this account; export the Cookie again and donate it afresh",
+    "Donated account #{{id}} signed out and left the pool; export its Cookie again to donate it afresh": "Donated account #{{id}} signed out and left the pool; export its Cookie again to donate it afresh",
+    "{{name}}'s AI Studio account signed out and left the pool": "{{name}}'s AI Studio account signed out and left the pool",
+    "{{name}}'s BUILD account signed out and left the pool": "{{name}}'s BUILD account signed out and left the pool",
+    "{{count}} {{model}} calls left the pool with {{name}}'s account": "{{count}} {{model}} calls left the pool with {{name}}'s account",
+    "{{count}} {{model}} calls {{name}} had taken went back to the pool": "{{count}} {{model}} calls {{name}} had taken went back to the pool",
+    "After exporting the Cookie, close that profile and leave the account alone: Google signs a session out when it is used from two places, and the pool loses the account within hours": "After exporting the Cookie, close that profile and leave the account alone: Google signs a session out when it is used from two places, and the pool loses the account within hours",
+    "One Google account goes into one pool only: the same Cookie in both AIS playground and BUILD signs itself out": "One Google account goes into one pool only: the same Cookie in both AIS playground and BUILD signs itself out",
+    "Sign in to aistudio.google.com in a browser profile used for nothing else, export the Cookie there, then close that profile and do not open the account again.": "Sign in to aistudio.google.com in a browser profile used for nothing else, export the Cookie there, then close that profile and do not open the account again."
   }
 }

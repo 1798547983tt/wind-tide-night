@@ -143,6 +143,14 @@ func ListVerifyingWtDonations(provider string) ([]*WtDonation, error) {
 	return donations, err
 }
 
+// ListActiveWtDonations lists every active donation to one pool, oldest
+// first, for the pass that checks them against the pool.
+func ListActiveWtDonations(provider string) ([]*WtDonation, error) {
+	var donations []*WtDonation
+	err := DB.Where("provider = ? AND status = ?", provider, WtDonationActive).Order("id ASC").Find(&donations).Error
+	return donations, err
+}
+
 // StartWtDonationVerification records a submitted callback inside tx: a new
 // verifying donation when donation.Id is 0, otherwise the member's existing
 // active or failed donation back to verifying (a re-authorization). The
@@ -214,6 +222,27 @@ func FailWtDonation(id int, reason string) error {
 		"fail_reason": reason,
 		"cpa_state":   "",
 	})
+}
+
+// FailActiveWtDonation records why the pool stopped using an active donation
+// once the account is out of the pool; the member reads the reason and may
+// donate the account afresh. A donation that is no longer active is left
+// alone and reported as ErrWtDonationNotFound.
+func FailActiveWtDonation(id int, reason string) error {
+	now := WtNow().Unix()
+	result := DB.Model(&WtDonation{}).Where("id = ? AND status = ?", id, WtDonationActive).Updates(map[string]any{
+		"status":      WtDonationFailed,
+		"fail_reason": reason,
+		"cpa_state":   "",
+		"updated_at":  now,
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrWtDonationNotFound
+	}
+	return nil
 }
 
 // RemoveWtDonation closes a donation after CPA deleted its credential.

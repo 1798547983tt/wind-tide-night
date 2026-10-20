@@ -7768,6 +7768,16 @@
     "The sign-in was not finished in time; start again": "沒有在限時內完成登入；請重新開始",
     "The pool owner paused this account": "號池管理員暫停了這個帳號",
     "Rate-limited; the pool is resting this account": "被限流了；號池正在讓這個帳號休息",
-    "Credits used up for today": "今天的額度已用完"
+    "Credits used up for today": "今天的額度已用完",
+    "This account is already in the other Cookie pool; a Google account can be in only one of AIS playground and BUILD": "這個帳號已經在另一個 Cookie 號池裡；一個 Google 帳號只能進 AIS playground 和 BUILD 中的一個",
+    "The pool could not read this account; export the Cookie again and donate it afresh": "號池讀不出這個帳號了；請重新匯出 Cookie 再捐一次",
+    "Donated account #{{id}} signed out and left the pool; export its Cookie again to donate it afresh": "捐贈的帳號 #{{id}} 登入已失效，已退出號池；重新匯出它的 Cookie 可以再捐一次",
+    "{{name}}'s AI Studio account signed out and left the pool": "{{name}} 的 AI Studio 帳號登入失效，退出了號池",
+    "{{name}}'s BUILD account signed out and left the pool": "{{name}} 的 BUILD 帳號登入失效，退出了號池",
+    "{{count}} {{model}} calls left the pool with {{name}}'s account": "{{name}} 的帳號退出時帶走了公共池裡的 {{count}} 次 {{model}}",
+    "{{count}} {{model}} calls {{name}} had taken went back to the pool": "{{name}} 取走但沒用的 {{count}} 次 {{model}} 回到了公共池",
+    "After exporting the Cookie, close that profile and leave the account alone: Google signs a session out when it is used from two places, and the pool loses the account within hours": "匯出 Cookie 之後就關掉那個瀏覽器設定檔、別再動這個帳號：同一個登入在兩處使用會被 Google 登出，號池幾個小時內就會失去這個帳號",
+    "One Google account goes into one pool only: the same Cookie in both AIS playground and BUILD signs itself out": "一個 Google 帳號只能進一個號池：同一份 Cookie 同時放進 AIS playground 和 BUILD 會互相頂掉登入",
+    "Sign in to aistudio.google.com in a browser profile used for nothing else, export the Cookie there, then close that profile and do not open the account again.": "在一個專門新建的瀏覽器設定檔裡登入 aistudio.google.com，在那裡匯出 Cookie，然後關掉這個設定檔，不要再打開這個帳號。"
   }
 }

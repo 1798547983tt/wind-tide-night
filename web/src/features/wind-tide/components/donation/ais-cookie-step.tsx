@@ -107,6 +107,11 @@ export function AisCookieStep(props: AisCookieStepProps) {
 
       <div className='bg-muted/40 space-y-2 rounded-lg border p-3 text-xs'>
         <p className='text-sm font-medium'>{t('How to get the Cookie')}</p>
+        <p className='text-muted-foreground'>
+          {t(
+            'Sign in to aistudio.google.com in a browser profile used for nothing else, export the Cookie there, then close that profile and do not open the account again.'
+          )}
+        </p>
         <ol className='text-muted-foreground list-decimal space-y-2 pl-4'>
           <li>
             <span className='text-foreground font-medium'>

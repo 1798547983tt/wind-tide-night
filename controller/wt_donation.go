@@ -371,16 +371,22 @@ func wtCookieDonationInput(c *gin.Context) (header, fingerprint string, ok bool)
 	return header, fingerprint, true
 }
 
-// wtCookieDonationSlot checks that the fingerprint is new to the provider's
-// pool and that the member has a slot left; every refusal is answered here.
+// wtCookieDonationSlot checks that no Cookie pool holds the fingerprint yet
+// (one Google account sits in one pool only, or the two copies of its
+// sign-in log each other out) and that the member has a slot left; every
+// refusal is answered here.
 func wtCookieDonationSlot(c *gin.Context, userID int, provider, fingerprint string) bool {
-	claimed, err := model.WtAisFingerprintInPool(provider, fingerprint)
+	holder, err := model.WtCookieFingerprintPool(fingerprint)
 	if err != nil {
 		common.ApiError(c, err)
 		return false
 	}
-	if claimed {
+	if holder == provider {
 		common.ApiError(c, model.ErrWtDonationDuplicate)
+		return false
+	}
+	if holder != "" {
+		common.ApiError(c, model.ErrWtDonationOtherPool)
 		return false
 	}
 	slots, err := model.CountWtDonationSlots(userID, provider)
@@ -766,7 +772,8 @@ func WtTestDonation(c *gin.Context) {
 // WtRemoveDonation takes the account out of its pool and closes the
 // donation. One submitted less than ten minutes ago is left to the verifier,
 // so the two do not race; the record stays when the pool could not delete
-// the account. The pool page announces the removal of an active account.
+// the account. The pool page announces the removal of an active account,
+// and a Cookie pool account squares its member's day on the way out.
 func WtRemoveDonation(c *gin.Context) {
 	if !wtPoolReady(c) {
 		return
@@ -833,8 +840,16 @@ func WtRemoveDonation(c *gin.Context) {
 		service.WtForgetPoolCredentials()
 	}
 	if wasActive {
-		if err := model.WtInsertPoolEvent(kind, donation.Provider, identity.UserID, model.WtDisplayNameOfUser(identity.UserID), 1, ""); err != nil {
+		displayName := model.WtDisplayNameOfUser(identity.UserID)
+		if err := model.WtInsertPoolEvent(kind, donation.Provider, identity.UserID, displayName, 1, ""); err != nil {
 			common.SysError(common.LogText("wt donation: the announcement of removed donation %d was not saved: %s", donation.Id, err.Error()))
+		}
+		// A Cookie pool account takes its share of the day with it: what the
+		// member gave on its strength comes back out of the public pool.
+		if donation.Provider == model.WtAisProvider || donation.Provider == model.WtBuildProvider {
+			if err := model.WtAisSettleAccountLoss(identity.UserID, donation.Provider, model.WtCheckinDay(model.WtNow()), displayName); err != nil {
+				common.SysError(common.LogText("wt donation: the ledger of member %d was not settled after donation %d was removed: %s", identity.UserID, donation.Id, err.Error()))
+			}
 		}
 	}
 	audit["success"] = true

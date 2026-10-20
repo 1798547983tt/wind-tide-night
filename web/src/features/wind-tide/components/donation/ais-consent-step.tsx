@@ -17,6 +17,8 @@ const CONSENT_ID = 'ais-donate-consent'
 const AIS_DONATION_RISKS = [
   'The Cookie is the full sign-in of that Google account: whoever holds it can act as the account',
   'Use a throwaway account, signed in alone in a browser profile of its own; only the first account of the browser sign-in (u/0) is used',
+  'After exporting the Cookie, close that profile and leave the account alone: Google signs a session out when it is used from two places, and the pool loses the account within hours',
+  'One Google account goes into one pool only: the same Cookie in both AIS playground and BUILD signs itself out',
   'The pool keeps the Cookie; this site keeps only the account id and the email',
   'AI Studio may rate-limit or ban accounts used this way; donate accounts you would not miss',
   'You can remove the account from the pool here at any time',

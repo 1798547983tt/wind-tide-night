@@ -164,6 +164,7 @@ func main() {
 	service.StartWtBuildVerifyTask()
 	service.StartWtWbVerifyTask()
 	service.StartWtPoolLevelTask()
+	service.StartWtPoolSyncTask()
 
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
