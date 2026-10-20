@@ -22,6 +22,7 @@ import { AisTank } from './ais-tank'
 import { AntigravityTank } from './antigravity-tank'
 import { PoolTicker } from './pool-ticker'
 import { SharedPool } from './shared-pool'
+import { WbTank } from './wb-tank'
 
 type PoolPageProps = {
   /** The strip that switches between the pools, when the site has several. */
@@ -60,6 +61,9 @@ export function PoolPage(props: PoolPageProps) {
     }
     if (overview.build) {
       tanks.push(<AisTank key='build' status={overview.build} />)
+    }
+    if (overview.workbuddy) {
+      tanks.push(<WbTank key='workbuddy' level={overview.workbuddy} />)
     }
     content = (
       <>

@@ -8,14 +8,15 @@ import { z } from 'zod'
 
 import type { SystemStatus } from '@/features/auth/types'
 
-// The tabs of the donated accounts page (wind-tide/API.md §15): the
-// Antigravity pool, the AI Studio pool, the BUILD pool and the compute pool
-// dashboard.
+// The tabs of the donated accounts page (wind-tide/API.md §15, §16): the
+// Antigravity pool, the AI Studio pool, the BUILD pool, the WorkBuddy pool
+// and the compute pool dashboard.
 
 export const DONATION_TABS = [
   'antigravity',
   'aistudio',
   'build',
+  'workbuddy',
   'pool',
 ] as const
 
@@ -31,6 +32,7 @@ export const DONATION_TAB_LABELS: Record<DonationTab, string> = {
   antigravity: 'Antigravity',
   aistudio: 'AIS playground',
   build: 'BUILD',
+  workbuddy: 'WorkBuddy',
   pool: 'Compute pool',
 }
 
@@ -43,7 +45,10 @@ export function isDonationTab(value: unknown): value is DonationTab {
 
 type PoolFlags = Pick<
   SystemStatus,
-  'wt_donation_enabled' | 'wt_ais_enabled' | 'wt_build_enabled'
+  | 'wt_donation_enabled'
+  | 'wt_ais_enabled'
+  | 'wt_build_enabled'
+  | 'wt_wb_enabled'
 >
 
 /**
@@ -58,6 +63,7 @@ export function enabledDonationTabs(
   if (status?.wt_donation_enabled === true) tabs.push('antigravity')
   if (status?.wt_ais_enabled === true) tabs.push('aistudio')
   if (status?.wt_build_enabled === true) tabs.push('build')
+  if (status?.wt_wb_enabled === true) tabs.push('workbuddy')
   if (tabs.length === 0) return ['antigravity']
   tabs.push('pool')
   return tabs

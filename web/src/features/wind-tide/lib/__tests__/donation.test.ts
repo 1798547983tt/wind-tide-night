@@ -14,6 +14,8 @@ import type {
   BuildDonationPool,
   Donation,
   DonationPool,
+  WbDonation,
+  WbDonationPool,
 } from '../../types'
 import {
   CALLBACK_PRECHECK_MESSAGES,
@@ -26,6 +28,8 @@ import {
   needsReauthorization,
   precheckCallbackAddress,
   tierLabel,
+  WB_REALM_LABELS,
+  WB_TEXTS,
   windowLabel,
 } from '../donation'
 
@@ -382,5 +386,100 @@ describe('the words of each Cookie pool', () => {
     expect(COOKIE_POOL_TEXTS.build.added).toContain('BUILD pool')
     expect(COOKIE_POOL_TEXTS.aistudio.removal).toContain('Cookie')
     expect(COOKIE_POOL_TEXTS.build.removal).toContain('sign-in')
+  })
+})
+
+function wbPool(overrides: Partial<WbDonationPool> = {}): WbDonationPool {
+  return {
+    state: 'available',
+    message: 'Available',
+    nickname: 'Alpha',
+    realm: 'cn',
+    credits: 300,
+    credits_total: 500,
+    retry_at: 0,
+    success: 40,
+    failed: 2,
+    checked_in: true,
+    ...overrides,
+  }
+}
+
+function wbDonation(overrides: Partial<WbDonation> = {}): Donation {
+  return {
+    id: 4,
+    provider: 'workbuddy',
+    email: '',
+    nickname: 'Alpha',
+    status: 'active',
+    fail_reason: '',
+    pool: wbPool(),
+    last_test: null,
+    created_at: 1760000000,
+    verified_at: 1760000100,
+    ...overrides,
+  }
+}
+
+describe('the badge of a WorkBuddy donation', () => {
+  test.each([
+    ['Verifying', 'info', wbDonation({ status: 'verifying', pool: null })],
+    [
+      'Failed',
+      'danger',
+      wbDonation({
+        status: 'failed',
+        pool: null,
+        fail_reason: 'The sign-in was not finished in time; start again',
+      }),
+    ],
+    ['Available', 'success', wbDonation()],
+    [
+      'Cooling down',
+      'warning',
+      wbDonation({ pool: wbPool({ state: 'cooldown', retry_at: 1760003600 }) }),
+    ],
+    ['Paused', 'neutral', wbDonation({ pool: wbPool({ state: 'paused' }) })],
+    [
+      'Sign-in expired',
+      'danger',
+      wbDonation({ pool: wbPool({ state: 'disabled' }) }),
+    ],
+    [
+      'Not in the pool',
+      'danger',
+      wbDonation({ pool: wbPool({ state: 'missing' }) }),
+    ],
+    // An active row the server could not attach a pool verdict to.
+    ['Pool unreachable', 'neutral', wbDonation({ pool: null })],
+  ])('reads %s in %s', (label, variant, row) => {
+    expect(donationBadge(row)).toEqual({ label, variant })
+  })
+
+  test('a WorkBuddy account is never re-authorized either; it is removed and donated again', () => {
+    expect(
+      needsReauthorization(wbDonation({ pool: wbPool({ state: 'disabled' }) }))
+    ).toBe(false)
+    expect(
+      needsReauthorization(wbDonation({ pool: wbPool({ state: 'missing' }) }))
+    ).toBe(false)
+  })
+})
+
+describe('the words of the WorkBuddy pool', () => {
+  test('name the pool, say the credits are shared and name both sign-ins', () => {
+    expect(WB_TEXTS.name).toBe('WorkBuddy')
+    expect(WB_TEXTS.donate).toMatch(/^Donate a/)
+    expect(WB_TEXTS.emptyTitle).toMatch(/^No .* accounts yet$/)
+    // No call count: the slogan promises the WB- models to every member.
+    expect(WB_TEXTS.slogan).toContain('WB- models')
+    expect(WB_TEXTS.slogan).toContain('every member')
+    expect(WB_TEXTS.added).toContain('shared with everyone')
+    expect(WB_TEXTS.addedWithNickname).toContain('{{nickname}}')
+    expect(WB_TEXTS.removal).toContain('sign-in token')
+    expect(WB_REALM_LABELS).toEqual({
+      cn: 'CodeBuddy (China)',
+      global: 'WorkBuddy (international)',
+    })
   })
 })

@@ -40,6 +40,8 @@ import type {
   PoolEventList,
   PoolOverview,
   PublicStats,
+  WbDonationStart,
+  WbRealm,
 } from './types'
 
 export const publicStatsQueryOptions = queryOptions({
@@ -367,6 +369,22 @@ export const COOKIE_DONATE: Record<
 > = {
   aistudio: donateAistudio,
   build: donateBuild,
+}
+
+/**
+ * Starts a WorkBuddy donation (wind-tide/API.md §16): the pool hands out
+ * Tencent's sign-in link of the chosen realm and follows the sign-in by
+ * itself; the answer is the record to poll and the link to open.
+ */
+export async function donateWorkbuddy(input: {
+  realm: WbRealm
+  accepted: boolean
+}) {
+  const response = await api.post<ApiResponse<WbDonationStart>>(
+    '/api/wt/donations/workbuddy',
+    input
+  )
+  return requireServerSuccess(response.data).data as WbDonationStart
 }
 
 // wind-tide: the compute pool tab (wind-tide/API.md §15).

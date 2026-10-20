@@ -22,7 +22,12 @@ import { donationsSearchSchema } from '../../../lib/donation-tabs'
 import type { PoolOverview } from '../../../types'
 import { DonationTabsPage } from '../donation-tabs-page'
 
-type Flags = { donation?: boolean; ais?: boolean; build?: boolean }
+type Flags = {
+  donation?: boolean
+  ais?: boolean
+  build?: boolean
+  wb?: boolean
+}
 
 function overview(): PoolOverview {
   return {
@@ -59,6 +64,7 @@ function overview(): PoolOverview {
       ],
     },
     build: null,
+    workbuddy: null,
     events: [],
   }
 }
@@ -73,6 +79,7 @@ function renderPage(flags: Flags, initialEntry = '/donations') {
     wt_donation_enabled: flags.donation === true,
     wt_ais_enabled: flags.ais === true,
     wt_build_enabled: flags.build === true,
+    wt_wb_enabled: flags.wb === true,
   })
   const root = createRootRoute()
   const authenticated = createRoute({
@@ -122,8 +129,8 @@ afterEach(() => {
 })
 
 describe('the tabs of the donated accounts page', () => {
-  test('with every pool on, all four tabs show and Antigravity opens first', async () => {
-    renderPage({ donation: true, ais: true, build: true })
+  test('with every pool on, all five tabs show and Antigravity opens first', async () => {
+    renderPage({ donation: true, ais: true, build: true, wb: true })
     expect(
       await screen.findByText('No donated accounts yet')
     ).toBeInTheDocument()
@@ -131,6 +138,7 @@ describe('the tabs of the donated accounts page', () => {
       'Antigravity',
       'AIS playground',
       'BUILD',
+      'WorkBuddy',
       'Compute pool',
     ])
     expect(screen.getByRole('tab', { name: 'Antigravity' })).toHaveAttribute(
@@ -184,6 +192,35 @@ describe('the tabs of the donated accounts page', () => {
     expect(api.get).toHaveBeenCalledWith('/api/wt/donations', {
       params: { provider: 'build' },
     })
+  })
+
+  test('the WorkBuddy tab opens its own page, which asks for its own donations', async () => {
+    renderPage(
+      { donation: true, ais: true, wb: true },
+      '/donations?tab=workbuddy'
+    )
+    expect(
+      await screen.findByText('No WorkBuddy accounts yet')
+    ).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'WorkBuddy' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    expect(
+      screen.getByRole('button', { name: 'Donate a WorkBuddy account' })
+    ).toBeEnabled()
+    expect(api.get).toHaveBeenCalledWith('/api/wt/donations', {
+      params: { provider: 'workbuddy' },
+    })
+    expect(screen.queryByRole('tab', { name: 'BUILD' })).not.toBeInTheDocument()
+  })
+
+  test('without the WorkBuddy pool its tab is absent and its address falls back', async () => {
+    renderPage({ donation: true, build: true }, '/donations?tab=workbuddy')
+    expect(
+      await screen.findByText('No donated accounts yet')
+    ).toBeInTheDocument()
+    expect(tabNames()).toEqual(['Antigravity', 'BUILD', 'Compute pool'])
   })
 
   test('without the BUILD pool its tab is absent and its address falls back', async () => {

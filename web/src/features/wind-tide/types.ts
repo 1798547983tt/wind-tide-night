@@ -148,15 +148,23 @@ export type GateRefusal = {
   retry_after: number
 }
 
-// wind-tide: donated Antigravity accounts (wind-tide/API.md §14) and donated
-// AI Studio accounts, to the AIS playground pool or the BUILD pool (§15).
-// All three kinds share the donations list.
+// wind-tide: donated Antigravity accounts (wind-tide/API.md §14), donated
+// AI Studio accounts, to the AIS playground pool or the BUILD pool (§15),
+// and donated WorkBuddy accounts (§16). All four kinds share the donations
+// list.
 
 /** Which pool a donated account went to. */
-export type DonationProvider = 'antigravity' | 'aistudio' | 'build'
+export type DonationProvider =
+  | 'antigravity'
+  | 'aistudio'
+  | 'build'
+  | 'workbuddy'
 
 /** The pools fed with the Cookie of a signed-in AI Studio page. */
-export type CookieProvider = Exclude<DonationProvider, 'antigravity'>
+export type CookieProvider = Exclude<
+  DonationProvider,
+  'antigravity' | 'workbuddy'
+>
 
 export type DonationStatus = 'verifying' | 'active' | 'failed'
 
@@ -217,6 +225,8 @@ export type DonationTest = {
 type DonationRecord = {
   id: number
   email: string
+  /** What the account goes by; only a WorkBuddy account has one. */
+  nickname?: string
   status: DonationStatus
   /** An English message key; empty unless the status is failed. */
   fail_reason: string
@@ -263,7 +273,49 @@ export type BuildDonation = DonationRecord & {
   pool: BuildDonationPool | null
 }
 
-export type Donation = AntigravityDonation | AisDonation | BuildDonation
+/** The two sign-ins the WorkBuddy pool knows: CodeBuddy in China, WorkBuddy elsewhere. */
+export type WbRealm = 'cn' | 'global'
+
+/** The WorkBuddy pool's verdict on an active donation (wind-tide/API.md §16). */
+export type WbPoolState =
+  | 'available'
+  | 'cooldown'
+  | 'paused'
+  | 'disabled'
+  | 'missing'
+
+export type WbDonationPool = {
+  state: WbPoolState
+  /** An English message key for the state. */
+  message: string
+  nickname: string
+  realm: WbRealm | string
+  /** Credits the account has left, against what it had. */
+  credits: number
+  credits_total: number
+  /** Unix seconds when a cooldown ends; 0 when none. */
+  retry_at: number
+  success: number
+  failed: number
+  /** Whether the pool has checked the account in today. */
+  checked_in: boolean
+}
+
+export type WbDonation = DonationRecord & {
+  provider: 'workbuddy'
+  /** The nickname Tencent gave the account; empty until the pool has it. */
+  nickname: string
+  /** Always empty: the WorkBuddy pool never reads the account's email. */
+  email: string
+  /** Only an active donation has one. */
+  pool: WbDonationPool | null
+}
+
+export type Donation =
+  | AntigravityDonation
+  | AisDonation
+  | BuildDonation
+  | WbDonation
 
 export type DonationList = {
   max: number
@@ -282,9 +334,18 @@ export type DonationSubmitted = {
   status: DonationStatus
 }
 
+/** A WorkBuddy donation the pool started: Tencent's link for the member to open. */
+export type WbDonationStart = DonationSubmitted & {
+  authorization_url: string
+  /** Unix seconds; the pool forgets the sign-in after this. */
+  expires_at: number
+}
+
 export type DonationProgress = {
   id: number
   email: string
+  /** Only a WorkBuddy account has one. */
+  nickname?: string
   status: DonationStatus
   fail_reason: string
 }
@@ -391,6 +452,8 @@ export type PoolEventKind =
   | 'build_account_removed'
   | 'build_given'
   | 'build_taken'
+  | 'wb_account_donated'
+  | 'wb_account_removed'
 
 export type PoolEvent = {
   id: number
@@ -405,6 +468,20 @@ export type PoolEvent = {
   created_at: number
 }
 
+/**
+ * The WorkBuddy pool's last reading (wind-tide/API.md §16): the accounts it
+ * holds and the credits left across them. `fetched_at` is 0 while the pool
+ * has not answered.
+ */
+export type WbPoolLevel = {
+  fetched_at: number
+  accounts: number
+  healthy: number
+  cooling: number
+  credits: number
+  credits_total: number
+}
+
 export type PoolOverview = {
   /** Null when the site has no Antigravity pool. */
   antigravity: AntigravityPoolLevel | null
@@ -412,6 +489,8 @@ export type PoolOverview = {
   aistudio: AisPoolStatus | null
   /** Null when the site has no BUILD pool. */
   build: AisPoolStatus | null
+  /** Null when the site has no WorkBuddy pool. */
+  workbuddy: WbPoolLevel | null
   /** The latest 50, newest first. */
   events: PoolEvent[]
 }

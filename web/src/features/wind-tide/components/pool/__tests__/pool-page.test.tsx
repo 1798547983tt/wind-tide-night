@@ -23,6 +23,7 @@ import type {
   AisPoolStatus,
   PoolEvent,
   PoolOverview,
+  WbPoolLevel,
 } from '../../../types'
 import { PoolPage } from '../pool-page'
 
@@ -121,6 +122,18 @@ function event(id: number, overrides: Partial<PoolEvent> = {}): PoolEvent {
   }
 }
 
+function wbLevel(overrides: Partial<WbPoolLevel> = {}): WbPoolLevel {
+  return {
+    fetched_at: Math.floor(Date.now() / 1000) - 60,
+    accounts: 3,
+    healthy: 2,
+    cooling: 1,
+    credits: 400,
+    credits_total: 1000,
+    ...overrides,
+  }
+}
+
 function renderPage() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -181,6 +194,7 @@ beforeEach(() => {
     },
     aistudio: aisStatus(),
     build: buildStatus(),
+    workbuddy: null,
     events: [
       event(3, {
         kind: 'ais_taken',
@@ -432,6 +446,85 @@ describe('the tanks', () => {
       screen.queryByRole('button', { name: 'Give calls' })
     ).not.toBeInTheDocument()
     expect(screen.getAllByRole('img', { name: '0% full' })).toHaveLength(1)
+  })
+})
+
+describe('the WorkBuddy tank', () => {
+  test('shows the credits left across the pool, its accounts and the way to donate', async () => {
+    overview = { ...overview, workbuddy: wbLevel() }
+    renderPage()
+    const tank = await gaugeOf('WorkBuddy')
+    expect(within(tank).getByText('40%')).toBeInTheDocument()
+    expect(
+      within(tank).getByRole('img', { name: '40% full' })
+    ).toBeInTheDocument()
+    expect(
+      within(tank).getByText('Credits left across the pool')
+    ).toBeInTheDocument()
+    expect(within(tank).getByText('400 / 1,000 credits')).toBeInTheDocument()
+    expect(within(tank).getByText('2 / 3 accounts healthy')).toBeInTheDocument()
+    expect(within(tank).getByText('1 cooling down')).toBeInTheDocument()
+    expect(within(tank).getByText(/^Updated /)).toBeInTheDocument()
+    expect(
+      within(tank).getByRole('link', { name: 'Donate a WorkBuddy account' })
+    ).toHaveAttribute('href', '/donations?tab=workbuddy')
+    // The pool has no gate, so nothing stands in front of the tank.
+    expect(screen.queryByText(/to unlock$/)).not.toBeInTheDocument()
+  })
+
+  test('while the pool is not answering, the tank stands empty and says so', async () => {
+    overview = {
+      ...overview,
+      workbuddy: wbLevel({
+        fetched_at: 0,
+        accounts: 0,
+        healthy: 0,
+        cooling: 0,
+        credits: 0,
+        credits_total: 0,
+      }),
+    }
+    renderPage()
+    const tank = await gaugeOf('WorkBuddy')
+    expect(
+      within(tank).getByText('The pool is not answering right now')
+    ).toBeInTheDocument()
+    expect(within(tank).getByText('—')).toBeInTheDocument()
+    expect(within(tank).queryByText(/credits/)).not.toBeInTheDocument()
+    expect(within(tank).queryByRole('link')).not.toBeInTheDocument()
+  })
+
+  test('with no account yet, the tank asks for the first one', async () => {
+    overview = {
+      ...overview,
+      workbuddy: wbLevel({
+        accounts: 0,
+        healthy: 0,
+        cooling: 0,
+        credits: 0,
+        credits_total: 0,
+      }),
+    }
+    renderPage()
+    const tank = await gaugeOf('WorkBuddy')
+    expect(
+      within(tank).getByText(
+        'No account in the pool yet; be the first to donate one'
+      )
+    ).toBeInTheDocument()
+    expect(within(tank).getByText('—')).toBeInTheDocument()
+    expect(within(tank).queryByText(/accounts healthy/)).not.toBeInTheDocument()
+    expect(
+      within(tank).getByRole('link', { name: 'Donate a WorkBuddy account' })
+    ).toBeInTheDocument()
+  })
+
+  test('without the WorkBuddy pool there is no such tank', async () => {
+    renderPage()
+    await screen.findByText('3 / 4 accounts healthy')
+    expect(
+      screen.queryByRole('region', { name: 'WorkBuddy' })
+    ).not.toBeInTheDocument()
   })
 })
 

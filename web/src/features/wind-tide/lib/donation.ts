@@ -15,9 +15,11 @@ import type {
   CookieProvider,
   Donation,
   PoolState,
+  WbPoolState,
+  WbRealm,
 } from '../types'
 
-// The member's donated accounts page (wind-tide/API.md §14 and §15).
+// The member's donated accounts page (wind-tide/API.md §14 to §16).
 
 export const DONATIONS_QUERY_ROOT = ['wind-tide', 'donations'] as const
 
@@ -55,6 +57,15 @@ const BUILD_POOL_BADGES: Record<BuildPoolState, DonationBadge> = {
   missing: { label: 'Not in the pool', variant: 'danger' },
 }
 
+// The WorkBuddy pool's states (wind-tide/API.md §16); labels are i18n keys.
+const WB_POOL_BADGES: Record<WbPoolState, DonationBadge> = {
+  available: { label: 'Available', variant: 'success' },
+  cooldown: { label: 'Cooling down', variant: 'warning' },
+  paused: { label: 'Paused', variant: 'neutral' },
+  disabled: { label: 'Sign-in expired', variant: 'danger' },
+  missing: { label: 'Not in the pool', variant: 'danger' },
+}
+
 export function donationBadge(donation: Donation): DonationBadge {
   if (donation.status === 'verifying') {
     return { label: 'Verifying', variant: 'info' }
@@ -69,6 +80,10 @@ export function donationBadge(donation: Donation): DonationBadge {
   if (donation.provider === 'build') {
     if (!donation.pool) return POOL_BADGES.unknown
     return BUILD_POOL_BADGES[donation.pool.state]
+  }
+  if (donation.provider === 'workbuddy') {
+    if (!donation.pool) return POOL_BADGES.unknown
+    return WB_POOL_BADGES[donation.pool.state]
   }
   return POOL_BADGES[donation.pool?.state ?? 'unknown']
 }
@@ -127,10 +142,51 @@ export const COOKIE_POOL_TEXTS: Record<CookieProvider, CookiePoolTexts> = {
   },
 }
 
+/** What the member reads about the WorkBuddy pool; every value is an i18n key. */
+export type WbPoolTexts = {
+  /** The pool's name, as the tab and the tank call it. */
+  name: string
+  /** The owner's words at the top of the page. */
+  slogan: string
+  emptyTitle: string
+  emptyDescription: string
+  /** The donate button and the dialog's title. */
+  donate: string
+  /** Step 3's good news, without and with the account's nickname. */
+  added: string
+  addedWithNickname: string
+  /** What leaves with the account when it is removed. */
+  removal: string
+}
+
+// The WorkBuddy pool (wind-tide/API.md §16) has no call count: whatever is
+// donated is shared by every member, so its words say so.
+export const WB_TEXTS: WbPoolTexts = {
+  name: 'WorkBuddy',
+  slogan:
+    'Spare CodeBuddy and WorkBuddy accounts join one shared pool: every member can call the WB- models, and the pool spreads the requests over every donated account.',
+  emptyTitle: 'No WorkBuddy accounts yet',
+  emptyDescription:
+    "Donate a spare CodeBuddy or WorkBuddy account: one sign-in on Tencent's page, and its credits are shared with everyone here.",
+  donate: 'Donate a WorkBuddy account',
+  added:
+    'The account is now in the WorkBuddy pool and its credits are shared with everyone on this site. Thank you!',
+  addedWithNickname:
+    '{{nickname}} is now in the WorkBuddy pool and its credits are shared with everyone on this site. Thank you!',
+  removal:
+    'The account leaves the pool now and its sign-in token is deleted. You can donate it again later.',
+}
+
+/** The two sign-ins the WorkBuddy pool knows; labels are i18n keys. */
+export const WB_REALM_LABELS: Record<WbRealm, string> = {
+  cn: 'CodeBuddy (China)',
+  global: 'WorkBuddy (international)',
+}
+
 /**
  * An active Antigravity account whose token the pool can no longer use. An
- * AI Studio account cannot be authorized again: its Cookie is removed and
- * donated afresh.
+ * AI Studio or WorkBuddy account cannot be authorized again: it is removed
+ * and donated afresh.
  */
 export function needsReauthorization(donation: Donation): boolean {
   if (donation.provider !== 'antigravity') return false

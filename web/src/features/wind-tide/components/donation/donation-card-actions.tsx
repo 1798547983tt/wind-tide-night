@@ -22,6 +22,7 @@ import {
   COOKIE_POOL_TEXTS,
   invalidateDonationQueries,
   needsReauthorization,
+  WB_TEXTS,
 } from '../../lib/donation'
 import type { Donation } from '../../types'
 
@@ -76,12 +77,14 @@ export function DonationCardActions(props: DonationCardActionsProps) {
   if (donation.status === 'failed') reauthorizeLabel = 'Retry'
   else if (needsReauthorization(donation)) reauthorizeLabel = 'Authorize again'
   // The pool holds a refresh token for an Antigravity account, a Cookie for
-  // an AI Studio one and a browser sign-in for a BUILD one; removal deletes
-  // whichever it is.
+  // an AI Studio one, a browser sign-in for a BUILD one and a sign-in token
+  // for a WorkBuddy one; removal deletes whichever it is.
   let removeDescription = t(
     'The account leaves the pool now and its token is deleted. You can donate it again later.'
   )
-  if (donation.provider !== 'antigravity') {
+  if (donation.provider === 'workbuddy') {
+    removeDescription = t(WB_TEXTS.removal)
+  } else if (donation.provider !== 'antigravity') {
     removeDescription = t(COOKIE_POOL_TEXTS[donation.provider].removal)
   }
 

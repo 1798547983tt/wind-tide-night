@@ -5,7 +5,7 @@ Part of a modified version of new-api by QuantumNous, licensed under the GNU
 Affero General Public License v3.0 or later. See the LICENSE file.
 */
 import { ExternalLink } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/copy-button'
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 
+import { useNowSeconds } from '../../hooks/use-now-seconds'
 import {
   CALLBACK_PRECHECK_MESSAGES,
   formatCountdown,
@@ -22,19 +23,6 @@ import {
 import type { DonationStart } from '../../types'
 
 const ADDRESS_ID = 'donate-callback-address'
-
-/** Unix seconds, ticking once a second while mounted. */
-function useNowSeconds() {
-  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000))
-  useEffect(() => {
-    const timer = window.setInterval(
-      () => setNow(Math.floor(Date.now() / 1000)),
-      1000
-    )
-    return () => window.clearInterval(timer)
-  }, [])
-  return now
-}
 
 type DonateAuthorizeStepProps = {
   started: DonationStart

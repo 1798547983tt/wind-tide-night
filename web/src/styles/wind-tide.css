@@ -31,6 +31,7 @@ Affero General Public License v3.0 or later. See the LICENSE file.
 
   --color-wt-sakura: var(--wt-sakura);
   --color-wt-matcha: var(--wt-matcha);
+  --color-wt-plum: var(--wt-plum);
   --color-wt-sun: var(--wt-sun);
   --color-wt-tide: var(--wt-tide);
   --color-wt-crimson: var(--wt-crimson);
@@ -45,6 +46,7 @@ Affero General Public License v3.0 or later. See the LICENSE file.
 :root {
   --wt-sakura: #f2b6c6;
   --wt-matcha: #9dbb8a;
+  --wt-plum: #a97bbd;
   --wt-sun: #f2c46b;
   --wt-tide: #4fa3c7;
   --wt-crimson: #b5223a;
@@ -107,6 +109,7 @@ Affero General Public License v3.0 or later. See the LICENSE file.
 .dark {
   --wt-sakura: #f29bb4;
   --wt-matcha: #8fcb9b;
+  --wt-plum: #c9a2e3;
   --wt-sun: #f2c46b;
   --wt-tide: #6fd9d1;
   --wt-crimson: #e0435a;
@@ -963,7 +966,11 @@ Affero General Public License v3.0 or later. See the LICENSE file.
 /* ── The shared tide pool ───────────────────────────────────────────────── */
 
 @layer components {
-  /* The BUILD pool's tank is matcha, between the tide and the sun. */
+  /* The BUILD pool's tank is matcha, between the tide and the sun; the
+   * WorkBuddy pool's is plum, the evening's own colour. */
+  .wt-tank[data-tone='plum'] {
+    --wt-tank: var(--wt-plum);
+  }
   .wt-tank[data-tone='matcha'] {
     --wt-tank: var(--wt-matcha);
   }

@@ -12,6 +12,7 @@ import type {
   AntigravityPoolLevel,
   PoolEvent,
   PoolEventKind,
+  WbPoolLevel,
 } from '../types'
 
 // The compute pool tab (wind-tide/API.md §15).
@@ -41,6 +42,12 @@ export function antigravityLevel(level: AntigravityPoolLevel): number {
     0
   )
   return clampFraction(sum / level.buckets.length)
+}
+
+/** How full the WorkBuddy tank is: the credits left against what the accounts had. */
+export function wbLevel(level: WbPoolLevel): number {
+  if (level.credits_total <= 0) return 0
+  return clampFraction(level.credits / level.credits_total)
 }
 
 /** How full a model's gauge is: what the member has left of the day's allowance. */
@@ -83,6 +90,8 @@ const EVENT_SENTENCES: Record<PoolEventKind, string> = {
   build_account_removed: '{{name}} removed a BUILD account',
   build_given: '{{name}} gave {{count}} {{model}} calls to the pool',
   build_taken: '{{name}} took {{count}} {{model}} calls from the pool',
+  wb_account_donated: '{{name}} donated a WorkBuddy account',
+  wb_account_removed: '{{name}} removed a WorkBuddy account',
 }
 
 /**

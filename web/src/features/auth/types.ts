@@ -192,6 +192,8 @@ export interface SystemStatus {
   wt_ais_enabled?: boolean
   /** wind-tide: members may donate accounts to the BUILD pool (wind-tide/API.md §15). */
   wt_build_enabled?: boolean
+  /** wind-tide: members may donate WorkBuddy accounts (wind-tide/API.md §16). */
+  wt_wb_enabled?: boolean
   [key: string]: unknown
 }
 

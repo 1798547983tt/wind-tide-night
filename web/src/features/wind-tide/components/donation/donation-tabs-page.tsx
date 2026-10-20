@@ -17,14 +17,16 @@ import { PoolPage } from '../pool/pool-page'
 import { AisDonationPage } from './ais-donation-page'
 import { DonationPage } from './donation-page'
 import { DonationTabs } from './donation-tabs'
+import { WbDonationPage } from './wb-donation-page'
 
 const route = getRouteApi('/_authenticated/donations/')
 
 /**
- * The donated accounts page (wind-tide/API.md §15): the Antigravity pool,
- * the AI Studio pool, the BUILD pool and the compute pool dashboard, one per
- * tab. The tab lives in the address, so a link opens the same one; a tab the
- * site does not offer falls back to the first it does.
+ * The donated accounts page (wind-tide/API.md §15, §16): the Antigravity
+ * pool, the AI Studio pool, the BUILD pool, the WorkBuddy pool and the
+ * compute pool dashboard, one per tab. The tab lives in the address, so a
+ * link opens the same one; a tab the site does not offer falls back to the
+ * first it does.
  */
 export function DonationTabsPage() {
   const { status } = useStatus()
@@ -39,6 +41,7 @@ export function DonationTabsPage() {
   const strip = <DonationTabs value={tab} tabs={tabs} onChange={show} />
 
   if (tab === 'pool') return <PoolPage tabs={strip} />
+  if (tab === 'workbuddy') return <WbDonationPage tabs={strip} />
   if (tab === 'aistudio' || tab === 'build') {
     return <AisDonationPage provider={tab} tabs={strip} />
   }

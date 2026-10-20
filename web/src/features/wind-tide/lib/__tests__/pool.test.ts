@@ -11,6 +11,7 @@ import type {
   AisPoolStatus,
   AntigravityPoolLevel,
   PoolEvent,
+  WbPoolLevel,
 } from '../../types'
 import {
   aisLevel,
@@ -21,6 +22,7 @@ import {
   rotatePoolEvents,
   sharedPoolLevel,
   sharedPools,
+  wbLevel,
 } from '../pool'
 
 function event(id: number, overrides: Partial<PoolEvent> = {}): PoolEvent {
@@ -107,6 +109,24 @@ describe('tank levels', () => {
     expect(sharedPoolLevel(modelPool({ pool_balance: 90 }))).toBe(1)
   })
 
+  test('the WorkBuddy tank is the share of the credits still left, clamped', () => {
+    const level = (overrides: Partial<WbPoolLevel>): WbPoolLevel => ({
+      fetched_at: 1760000000,
+      accounts: 3,
+      healthy: 2,
+      cooling: 1,
+      credits: 400,
+      credits_total: 1000,
+      ...overrides,
+    })
+    expect(wbLevel(level({}))).toBe(0.4)
+    expect(wbLevel(level({ credits: 0 }))).toBe(0)
+    expect(wbLevel(level({ credits: 1200 }))).toBe(1)
+    expect(wbLevel(level({ credits: -5 }))).toBe(0)
+    // Nothing to measure against while the pool holds no credits at all.
+    expect(wbLevel(level({ credits: 10, credits_total: 0 }))).toBe(0)
+  })
+
   test('the shared pools are every model of every Cookie pool the site runs, in order', () => {
     const build = modelPool({
       provider: 'build',
@@ -144,6 +164,8 @@ describe('announcement sentences', () => {
     ['build_account_removed', '{{name}} removed a BUILD account'],
     ['build_given', '{{name}} gave {{count}} {{model}} calls to the pool'],
     ['build_taken', '{{name}} took {{count}} {{model}} calls from the pool'],
+    ['wb_account_donated', '{{name}} donated a WorkBuddy account'],
+    ['wb_account_removed', '{{name}} removed a WorkBuddy account'],
   ] as const)('%s reads as %s', (kind, key) => {
     expect(
       poolEventSentence(

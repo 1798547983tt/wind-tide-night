@@ -18,14 +18,20 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { toIntlLocale } from '@/i18n/languages'
-import { formatTimestampRelative } from '@/lib/format'
+import { formatNumber, formatTimestampRelative } from '@/lib/format'
 
-import { donationBadge, formatResetTime, maskEmail } from '../../lib/donation'
+import {
+  donationBadge,
+  formatResetTime,
+  maskEmail,
+  WB_REALM_LABELS,
+} from '../../lib/donation'
 import type {
   AisDonation,
   AntigravityDonation,
   BuildDonation,
   Donation,
+  WbDonation,
 } from '../../types'
 import { DonationCardActions } from './donation-card-actions'
 import { DonationUsage } from './donation-usage'
@@ -60,12 +66,17 @@ export function DonationCard(props: DonationCardProps) {
   } else if (donation.provider === 'aistudio') {
     title = donation.email ? maskEmail(donation.email) : t('Google account')
     details = <AisPoolDetails donation={donation} locale={locale} />
-  } else {
+  } else if (donation.provider === 'build') {
     // The BUILD pool never reads the email; the account goes by its slot.
     title = donation.pool
       ? t('BUILD account #{{index}}', { index: donation.pool.index })
       : t('BUILD account')
     details = <BuildPoolDetails donation={donation} />
+  } else {
+    // The WorkBuddy pool reads no email either; the account goes by the
+    // nickname Tencent gave it.
+    title = donation.nickname || t('WorkBuddy account')
+    details = <WbPoolDetails donation={donation} locale={locale} />
   }
 
   return (
@@ -214,6 +225,55 @@ function BuildPoolDetails(props: PoolDetailsProps<BuildDonation>) {
     <>
       <p>{t('Slot {{index}} in the pool', { index: pool.index })}</p>
       {turn && <p className='text-muted-foreground'>{turn}</p>}
+      {pool.state !== 'available' && pool.message && (
+        <p className='text-muted-foreground break-words'>{t(pool.message)}</p>
+      )}
+    </>
+  )
+}
+
+/**
+ * The WorkBuddy pool's figures: which sign-in the account came from, the
+ * credits it has left, its counters, and for a resting account when it is
+ * back and why.
+ */
+function WbPoolDetails(props: PoolDetailsProps<WbDonation>) {
+  const { t } = useTranslation()
+  const pool = props.donation.pool
+  if (!pool) return null
+  let realm = pool.realm
+  if (pool.realm === 'cn' || pool.realm === 'global') {
+    realm = t(WB_REALM_LABELS[pool.realm])
+  }
+  return (
+    <>
+      {pool.state !== 'missing' && (
+        <>
+          <p>
+            {t('{{credits}} / {{total}} credits left', {
+              credits: formatNumber(pool.credits, props.locale),
+              total: formatNumber(pool.credits_total, props.locale),
+            })}
+          </p>
+          <p className='text-muted-foreground'>
+            {realm}
+            {pool.checked_in && ` · ${t('Checked in today')}`}
+          </p>
+          <p className='text-muted-foreground'>
+            {t(
+              '{{success}} succeeded · {{failed}} failed since the pool last started',
+              { success: pool.success, failed: pool.failed }
+            )}
+          </p>
+        </>
+      )}
+      {pool.state === 'cooldown' && pool.retry_at > 0 && (
+        <p>
+          {t('Back at {{time}}', {
+            time: formatResetTime(pool.retry_at, props.locale),
+          })}
+        </p>
+      )}
       {pool.state !== 'available' && pool.message && (
         <p className='text-muted-foreground break-words'>{t(pool.message)}</p>
       )}
