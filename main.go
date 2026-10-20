@@ -151,12 +151,18 @@ func main() {
 		if err := service.WtEnsureBuildChannel(); err != nil {
 			common.SysError(common.LogText("wt build: the BUILD channel could not be prepared: %s", err.Error()))
 		}
+		// wind-tide: the WorkBuddy pool (wind-tide/API.md §16) gets its channel
+		// once; the owner edits its models afterwards.
+		if err := service.WtEnsureWbChannel(); err != nil {
+			common.SysError(common.LogText("wt wb: the WorkBuddy channel could not be prepared: %s", err.Error()))
+		}
 		if err := model.WtBackfillCallStats(); err != nil {
 			common.SysError(common.LogText("wt calls: the leaderboard counters could not be filled from the logs: %s", err.Error()))
 		}
 	}
 	service.StartWtAisVerifyTask()
 	service.StartWtBuildVerifyTask()
+	service.StartWtWbVerifyTask()
 	service.StartWtPoolLevelTask()
 
 	// Subscription quota reset task (daily/weekly/monthly/custom)

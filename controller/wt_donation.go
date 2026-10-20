@@ -81,12 +81,15 @@ func wtDonationProviderReady(c *gin.Context, donation *model.WtDonation) bool {
 		return wtAisReady(c)
 	case model.WtBuildProvider:
 		return wtBuildReady(c)
+	case model.WtWbProvider:
+		return wtWbReady(c)
 	}
 	return wtDonationReady(c)
 }
 
 // wtProviderOf reads the provider query of the list, Antigravity unless AI
-// Studio or Build is asked for, and checks that its pool is configured.
+// Studio, Build or WorkBuddy is asked for, and checks that its pool is
+// configured.
 func wtProviderOf(c *gin.Context) (string, bool) {
 	provider := c.DefaultQuery("provider", service.WtDonationProvider)
 	switch provider {
@@ -96,6 +99,8 @@ func wtProviderOf(c *gin.Context) (string, bool) {
 		return provider, wtAisReady(c)
 	case model.WtBuildProvider:
 		return provider, wtBuildReady(c)
+	case model.WtWbProvider:
+		return provider, wtWbReady(c)
 	}
 	common.ApiErrorT(c, "Invalid parameters")
 	return "", false
@@ -500,13 +505,14 @@ func WtDonateBuild(c *gin.Context) {
 	wtAcceptedDonation(c, donation)
 }
 
-// wtDonationItem is one row of the member's list (wind-tide/API.md §14 and
-// §15); pool is the live state of the account, nil when there is none.
+// wtDonationItem is one row of the member's list (wind-tide/API.md §14 to
+// §16); pool is the live state of the account, nil when there is none.
 func wtDonationItem(donation *model.WtDonation, pool any) gin.H {
 	item := gin.H{
 		"id":          donation.Id,
 		"provider":    donation.Provider,
 		"email":       donation.Email,
+		"nickname":    donation.Nickname,
 		"status":      donation.Status,
 		"fail_reason": donation.FailReason,
 		"pool":        pool,
@@ -528,9 +534,9 @@ func wtDonationItem(donation *model.WtDonation, pool any) gin.H {
 // wtDonationPoolOf is the live state of an active donation's account: from
 // the credential list for Antigravity, where an unreachable pool shows as
 // unknown rather than as a missing file, from the rotation table for AI
-// Studio and from the console status for Build, where an unreachable pool
-// shows nothing.
-func wtDonationPoolOf(donation *model.WtDonation, pool map[string]*service.WtCPACredential, rotation map[string]*service.WtAisRotationEntry, build *service.WtBuildStatus, now time.Time) any {
+// Studio and from the pool status for Build and WorkBuddy, where an
+// unreachable pool shows nothing.
+func wtDonationPoolOf(donation *model.WtDonation, pool map[string]*service.WtCPACredential, rotation map[string]*service.WtAisRotationEntry, build *service.WtBuildStatus, wb *service.WtWbStatus, now time.Time) any {
 	if donation.Status != model.WtDonationActive {
 		return nil
 	}
@@ -546,6 +552,11 @@ func wtDonationPoolOf(donation *model.WtDonation, pool map[string]*service.WtCPA
 			return nil
 		}
 		return service.WtBuildPoolStateOf(build, index)
+	case model.WtWbProvider:
+		if wb == nil {
+			return nil
+		}
+		return service.WtWbPoolStateOf(wb, donation.CredentialName, now)
 	}
 	if pool == nil {
 		return service.WtPoolInfo{State: service.WtPoolUnknown}
@@ -571,6 +582,7 @@ func WtListDonations(c *gin.Context) {
 	var pool map[string]*service.WtCPACredential
 	var rotation map[string]*service.WtAisRotationEntry
 	var build *service.WtBuildStatus
+	var wb *service.WtWbStatus
 	maxSlots := model.WtDonationMaxPerUser
 	switch {
 	case provider == model.WtAisProvider:
@@ -583,6 +595,11 @@ func WtListDonations(c *gin.Context) {
 		if anyActive {
 			build, _ = service.WtBuildStatusCached(c.Request.Context())
 		}
+	case provider == model.WtWbProvider:
+		maxSlots = model.WtAisMaxPerUser
+		if anyActive {
+			wb, _ = service.WtWbStatusCached(c.Request.Context())
+		}
 	case anyActive:
 		if list, err := service.WtPoolCredentials(c.Request.Context()); err == nil {
 			pool = make(map[string]*service.WtCPACredential, len(list))
@@ -594,7 +611,7 @@ func WtListDonations(c *gin.Context) {
 	now := model.WtNow()
 	items := make([]gin.H, 0, len(donations))
 	for _, donation := range donations {
-		items = append(items, wtDonationItem(donation, wtDonationPoolOf(donation, pool, rotation, build, now)))
+		items = append(items, wtDonationItem(donation, wtDonationPoolOf(donation, pool, rotation, build, wb, now)))
 	}
 	common.ApiSuccess(c, gin.H{"max": maxSlots, "items": items})
 }
@@ -613,6 +630,7 @@ func WtGetDonation(c *gin.Context) {
 		"id":          donation.Id,
 		"provider":    donation.Provider,
 		"email":       donation.Email,
+		"nickname":    donation.Nickname,
 		"status":      donation.Status,
 		"fail_reason": donation.FailReason,
 	})
@@ -710,6 +728,18 @@ func WtTestDonation(c *gin.Context) {
 		if passed {
 			message = wtAisTestOK
 		}
+	case model.WtWbProvider:
+		// The panel refreshes the token itself: the account passes while the
+		// panel still lists it and has not given up on it.
+		var account *service.WtWbAccount
+		if status, err := service.WtWbStatusNow(c.Request.Context()); err == nil {
+			account = status.Account(donation.CredentialName)
+		}
+		passed = account != nil && !account.Disabled
+		message = wtWbTestFailed
+		if passed {
+			message = wtAisTestOK
+		}
 	default:
 		var detail string
 		var err error
@@ -771,6 +801,8 @@ func WtRemoveDonation(c *gin.Context) {
 			if index, convErr := strconv.Atoi(donation.CredentialName); convErr == nil {
 				err = service.WtBuildDeleteAccount(c.Request.Context(), index)
 			}
+		case model.WtWbProvider:
+			err = service.WtWbRemoveAccount(c.Request.Context(), donation.CredentialName)
 		default:
 			err = service.WtCPADeleteCredential(c.Request.Context(), donation.CredentialName)
 		}
@@ -793,6 +825,9 @@ func WtRemoveDonation(c *gin.Context) {
 	case model.WtBuildProvider:
 		kind = model.WtPoolEventBuildRemoved
 		service.WtForgetBuildStatus()
+	case model.WtWbProvider:
+		kind = model.WtPoolEventWbRemoved
+		service.WtForgetWbStatus()
 	default:
 		service.WtForgetCredentialUsage(donation.AuthIndex)
 		service.WtForgetPoolCredentials()

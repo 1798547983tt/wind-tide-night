@@ -40,14 +40,16 @@ var (
 )
 
 // WtDonation is one donated account. Email is lower case and may change
-// after verification to the account Google actually authorized. CpaState is
-// the authorization session while verifying, cleared afterwards. All times
-// are Unix seconds; 0 means "not yet".
+// after verification to the account Google actually authorized; Nickname is
+// what a WorkBuddy account goes by (wt_wb.go). CpaState is the authorization
+// session while verifying, cleared afterwards. All times are Unix seconds; 0
+// means "not yet".
 type WtDonation struct {
 	Id                int    `json:"id"`
 	UserId            int    `json:"user_id" gorm:"not null;index:idx_wt_donations_user_id"`
 	Provider          string `json:"provider" gorm:"type:varchar(32);not null"`
 	Email             string `json:"email" gorm:"type:varchar(255);not null;index:idx_wt_donations_email"`
+	Nickname          string `json:"nickname" gorm:"type:varchar(64);not null;default:''"`
 	CredentialName    string `json:"credential_name" gorm:"type:varchar(255);not null"`
 	AuthIndex         string `json:"auth_index" gorm:"type:varchar(64);not null"`
 	ProjectId         string `json:"project_id" gorm:"type:varchar(128);not null"`

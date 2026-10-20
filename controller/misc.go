@@ -135,6 +135,8 @@ func GetStatus(c *gin.Context) {
 		"wt_ais_enabled": service.WtAisEnabled(),
 		// wind-tide: and Build accounts to the BUILD pool (wind-tide/API.md §15).
 		"wt_build_enabled": service.WtBuildEnabled(),
+		// wind-tide: and WorkBuddy accounts to the WorkBuddy pool (wind-tide/API.md §16).
+		"wt_wb_enabled": service.WtWbEnabled(),
 	}
 
 	// 根据启用状态注入可选内容

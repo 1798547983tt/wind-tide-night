@@ -38,6 +38,10 @@ services:
       WT_BUILD_URL: ${WT_BUILD_URL:-}
       WT_BUILD_PASSWORD: ${WT_BUILD_PASSWORD:-}
       WT_BUILD_API_KEY: ${WT_BUILD_API_KEY:-}
+      # Optional: the workbuddy2api panel behind the WorkBuddy tab (wind-tide/API.md
+      # §16). Both empty = feature hidden.
+      WT_WB_URL: ${WT_WB_URL:-}
+      WT_WB_API_KEY: ${WT_WB_API_KEY:-}
       # Caddy is the only proxy in front of the site; trust its network only.
       TRUSTED_PROXIES: 10.255.250.0/24
       ERROR_LOG_ENABLED: 'true'

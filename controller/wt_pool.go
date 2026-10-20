@@ -23,7 +23,7 @@ const wtPoolEventsPage = 50
 // wtPoolReady answers the disabled message unless the site is wired to at
 // least one pool.
 func wtPoolReady(c *gin.Context) bool {
-	if service.WtDonationEnabled() || service.WtAisEnabled() || service.WtBuildEnabled() {
+	if service.WtDonationEnabled() || service.WtAisEnabled() || service.WtBuildEnabled() || service.WtWbEnabled() {
 		return true
 	}
 	common.ApiError(c, errWtDonationDisabled)
@@ -60,14 +60,22 @@ func wtSpecReady(c *gin.Context, spec *model.WtAisModelSpec) bool {
 }
 
 // WtGetPool is the pool page in one read: each tank is null while its pool
-// is not configured.
+// is not configured. The WorkBuddy tank reads the panel's cached status; a
+// panel that does not answer shows a tank without a reading.
 func WtGetPool(c *gin.Context) {
 	if !wtPoolReady(c) {
 		return
 	}
-	reply := gin.H{"antigravity": nil, "aistudio": nil, "build": nil}
+	reply := gin.H{"antigravity": nil, "aistudio": nil, "build": nil, "workbuddy": nil}
 	if service.WtDonationEnabled() {
 		reply["antigravity"] = service.WtPoolLevelSnapshot()
+	}
+	if service.WtWbEnabled() {
+		level := service.WtWbPoolLevel{}
+		if status, err := service.WtWbStatusCached(c.Request.Context()); err == nil {
+			level = service.WtWbPoolLevelOf(status)
+		}
+		reply["workbuddy"] = level
 	}
 	day := model.WtCheckinDay(model.WtNow())
 	for _, pool := range []struct {

@@ -200,6 +200,7 @@ func WtResetDonationCaches() {
 	WtForgetPoolCredentials()
 	WtForgetAisRotation()
 	WtForgetBuildStatus()
+	WtForgetWbStatus()
 	wtBuildForgetSession()
 	WtResetPoolLevel()
 	wtUsageMu.Lock()

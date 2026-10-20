@@ -49,6 +49,8 @@ func setWtRoutes(apiRouter *gin.RouterGroup) {
 		donationRoute.POST("/aistudio", middleware.UserCriticalRateLimit("wt-donation"), controller.WtDonateAistudio)
 		// wind-tide: the same Cookie donated to the BUILD pool (§15).
 		donationRoute.POST("/build", middleware.UserCriticalRateLimit("wt-donation"), controller.WtDonateBuild)
+		// wind-tide: a WorkBuddy account, signed in on Tencent's page (§16).
+		donationRoute.POST("/workbuddy", middleware.UserCriticalRateLimit("wt-donation"), controller.WtDonateWorkbuddy)
 	}
 
 	// wind-tide: the pool page (wind-tide/API.md §15). Members only, browser

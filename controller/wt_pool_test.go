@@ -885,10 +885,11 @@ func TestWtPoolGate(t *testing.T) {
 
 // wtAisPoolReply is the shape of the pool page the tests read.
 type wtAisPoolReply struct {
-	Antigravity *service.WtPoolLevel `json:"antigravity"`
-	Aistudio    *model.WtAisBalance  `json:"aistudio"`
-	Build       *model.WtAisBalance  `json:"build"`
-	Events      []model.WtPoolEvent  `json:"events"`
+	Antigravity *service.WtPoolLevel   `json:"antigravity"`
+	Aistudio    *model.WtAisBalance    `json:"aistudio"`
+	Build       *model.WtAisBalance    `json:"build"`
+	Workbuddy   *service.WtWbPoolLevel `json:"workbuddy"`
+	Events      []model.WtPoolEvent    `json:"events"`
 }
 
 func wtReadPool(t *testing.T, member service.AuthIdentity) wtAisPoolReply {
